@@ -4,13 +4,15 @@
 
 #include "secrets.h"
 #include "pins.h"
+#include "display.h"
 
 #include "SPI.h"
 #include "WiFi.h"
 
+#include <Arduino.h>
 #include <Adafruit_SHTC3.h>
-#include <Adafruit_EPD.h>
 #include <CommandParser.h>
+#include <TaskManagerIO.h>
 
 const char* ssid = WIFI_SSID;
 const char* password =  WIFI_PW;
@@ -32,19 +34,35 @@ void cmd_getdata(MyCommandParser::Argument *args, char *response){
   delay(1000);
 }
 
-void testdrawtext(char *text, uint16_t color) {
-  display.setCursor(0, 0);
-  display.setTextColor(color);
-  display.setTextWrap(true);
-  display.print(text);
+void log_data(){
+  Serial.print("Current IP: "); Serial.println(WiFi.localIP());
+  sensors_event_t humidity, temp;
+  shtc3.getEvent(&humidity, &temp);// populate temp and humidity objects with fresh data
+  Serial.print("Humidity: "); Serial.print(humidity.relative_humidity); Serial.println("% rH");
+  Serial.print("Temp: "); Serial.print(temp.temperature); Serial.println(" C");
 }
+
+void update_display(){
+  display.clearBuffer();
+  display.setCursor(0, 12);
+  display.setTextWrap(true);
+
+  sensors_event_t humidity, temp;
+  shtc3.getEvent(&humidity, &temp);// populate temp and humidity objects with fresh data
+  writeTemp(&display, temp.temperature);
+  writeHumidity(&display, humidity.relative_humidity);
+  writeIP(&display, WiFi.localIP().toString().c_str());
+
+  display.display();
+}
+
 
 void setup_wifi(){
   WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
-    Serial.println("Connecting to WiFi..");
+    Serial.print("Connecting to WiFi... ");
   }
   Serial.println(WiFi.localIP());
 }
@@ -57,22 +75,25 @@ void setup_shtc3(){
   Serial.println("Found SHTC3 sensor");
 }
 
-void setup_epd(){
-  display.begin();
-  display.clearBuffer();
-  testdrawtext("Initial test output for the entire display!", EPD_BLACK);
-  display.display();
-  Serial.println("Display update attempted...");
-}
 
 void setup() {
   Serial.begin(115200);
-  //setup_shtc3();
-  setup_epd();
+  display.begin();
+
+  setup_shtc3();
+  setup_wifi();
+
+  update_display();
+
   parser.registerCommand("read", "", cmd_getdata);
+
+  taskManager.scheduleFixedRate(2, log_data, TIME_SECONDS);
+  taskManager.scheduleFixedRate(180, update_display, TIME_SECONDS);
+  log_data();
 }
 
 void loop() {
+  /*
   if (Serial.available()){
     char line[128];
     size_t lineLength = Serial.readBytesUntil('\n', line, 127);
@@ -81,5 +102,10 @@ void loop() {
     char response[MyCommandParser::MAX_RESPONSE_SIZE];
     parser.processCommand(line, response);
   }
+  */
+  auto delayTime = taskManager.microsToNextTask() / 1000;
+  Serial.print("Delay to next run: "); Serial.println(delayTime);
+  delay(delayTime);
+  taskManager.runLoop();
 }
 
