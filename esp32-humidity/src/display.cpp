@@ -28,5 +28,5 @@ void write(Adafruit_EPD *d, const char *text, uint16_t color, const GFXfont *fon
   d->setTextColor(color);
   d->setTextWrap(true);
   d->println(text);
-  
+
 }

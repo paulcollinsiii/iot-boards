@@ -1,8 +1,10 @@
 # Project specific ignores
 
 secrets.h
+backend/mqtt/mosquitto/data/
+backend/mqtt/mosquitto/log/
 
-# Gitignore file from github/gitignore files. 
+# Gitignore file from github/gitignore files.
 # * C++
 # * Python
 
