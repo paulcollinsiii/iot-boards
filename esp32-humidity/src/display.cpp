@@ -23,6 +23,10 @@ void writeIP(Adafruit_EPD *d, const char *ip){
   write(d, t, EPD_BLACK, &FreeMono9pt7b);
 }
 
+void writeTime(Adafruit_EPD *d, const char *time){
+  write(d, time, EPD_BLACK, &FreeMono9pt7b);
+}
+
 void write(Adafruit_EPD *d, const char *text, uint16_t color, const GFXfont *font){
   d->setFont(font);
   d->setTextColor(color);

@@ -36,6 +36,7 @@ MQTTClient client;
 Timezone nyc;
 
 sensors_event_t humidity, temp;
+const char delim[] = "\r\n";
 
 
 
@@ -55,14 +56,13 @@ class SerialCommandEvent : public BaseEvent {
       char response[MyCommandParser::MAX_RESPONSE_SIZE];
 
       if(skipToDelim){
-        if(input.endsWithCharFrom("\r\n")){
+        if(input.endsWithCharFrom(delim)){
           skipToDelim = false;
         }
         input.clear();
         return;
       }
-      if(input.nextToken(token, "\r\n")){
-        token.debug("after next token=> ");
+      if(input.nextToken(token, delim)){
         parser.processCommand(token.c_str(), response);
         return;
       }
@@ -80,7 +80,7 @@ void publish_serial(){
   Serial.print("Current IP: "); Serial.println(WiFi.localIP());
   Serial.print("Humidity: "); Serial.print(humidity.relative_humidity); Serial.println("% rH");
   Serial.print("Temp: "); Serial.print(temp.temperature); Serial.println(" C");
-  Serial.print("Current time: "); Serial.println(nyc.dateTime());
+  Serial.print("Current time: "); Serial.println(nyc.dateTime("Y-m-d H:i:s T"));
 }
 
 void cmd_getdata(MyCommandParser::Argument *args, char *response){
@@ -102,7 +102,9 @@ void publish_mqtt(){
 
   serializeJson(doc, serialized);
   //TODO: This should include more location data, programmable via serial cmd
-  client.publish("sensors", serialized);
+  if(!client.publish("sensors", serialized)){
+    Serial.println("Failed to publish");
+  }
 }
 
 
@@ -111,9 +113,11 @@ void update_display(){
   display.setCursor(0, 12);
   display.setTextWrap(true);
 
+
+  writeTime(&display, nyc.dateTime("Y-m-d H:i T").c_str());
+  writeIP(&display, WiFi.localIP().toString().c_str());
   writeTemp(&display, temp.temperature);
   writeHumidity(&display, humidity.relative_humidity);
-  writeIP(&display, WiFi.localIP().toString().c_str());
 
   display.display();
 }
@@ -153,14 +157,13 @@ void setup_mqtt(){
 void setup_serial(){
   SafeString::setOutput(Serial);
 }
+
 void setup_time(){
   Serial.println("Setting up time...");
   nyc.setLocation("America/New_York");
   setServer("192.168.2.1");
   setInterval(0);  // Don't poll ntp server, we'll configure that
-  Serial.println("waiting for sync");
   updateNTP();
-  Serial.println("Timehacked");
 }
 
 void setup() {
@@ -173,27 +176,18 @@ void setup() {
   setup_mqtt();
   setup_time();
 
-  //update_display();
+  update_display();
 
   parser.registerCommand("read", "", cmd_getdata);
 
   taskManager.scheduleFixedRate(2, update_and_publish, TIME_SECONDS);
+  taskManager.scheduleFixedRate(900, updateNTP, TIME_SECONDS); // NTP every 15 min
   taskManager.registerEvent(&serialCommandEvent);
   //taskManager.scheduleFixedRate(180, update_display, TIME_SECONDS);
   publish_serial();
 }
 
 void loop() {
-  /*
-  if (Serial.available()){
-    char line[128];
-    size_t lineLength = Serial.readBytesUntil('\n', line, 127);
-    line[lineLength] = '\0';
-
-    char response[MyCommandParser::MAX_RESPONSE_SIZE];
-    parser.processCommand(line, response);
-  }
-  */
   auto delayTime = taskManager.microsToNextTask() / 1000;
   delay(delayTime);
   taskManager.runLoop();
