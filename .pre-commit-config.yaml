@@ -6,7 +6,8 @@ repos:
     - id: trailing-whitespace
     - id: check-yaml
     - id: check-json
-- repo: git://github.com/doublify/pre-commit-clang-format
-  rev: master
+- repo: https://github.com/pocc/pre-commit-hooks
+  rev: python
   hooks:
     - id: clang-format
+      args: [--style=Google, -i]
