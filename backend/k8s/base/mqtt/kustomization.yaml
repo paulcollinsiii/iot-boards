@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - mqtt-configmap.yaml
+  - mqtt-deployment.yaml
+  - mqtt-service.yaml
+  - mqtt-ingressroutetcp.yaml

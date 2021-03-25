@@ -1,0 +1,102 @@
+apiVersion: k0sctl.k0sproject.io/v1beta1
+kind: Cluster
+metadata:
+  name: k0s-cluster
+spec:
+  hosts:
+  - ssh:
+      address: 192.168.2.181
+      user: vagrant
+      port: 22
+      keyPath: /home/paulcollins/coding/iot-boards/backend/kubespray/.vagrant/machines/default/virtualbox/private_key
+    role: controller+worker
+  k0s:
+    config:
+      apiVersion: k0s.k0sproject.io/v1beta1
+      images:
+        konnectivity:
+          image: us.gcr.io/k8s-artifacts-prod/kas-network-proxy/proxy-agent
+          version: v0.0.13
+        metricsserver:
+          image: gcr.io/k8s-staging-metrics-server/metrics-server
+          version: v0.3.7
+        kubeproxy:
+          image: k8s.gcr.io/kube-proxy
+          version: v1.20.4
+        coredns:
+          image: docker.io/coredns/coredns
+          version: 1.7.0
+        calico:
+          cni:
+            image: calico/cni
+            version: v3.16.2
+          flexvolume:
+            image: calico/pod2daemon-flexvol
+            version: v3.16.2
+          node:
+            image: calico/node
+            version: v3.16.2
+          kubecontrollers:
+            image: calico/kube-controllers
+            version: v3.16.2
+      installConfig:
+        users:
+          etcdUser: etcd
+          kineUser: kube-apiserver
+          konnectivityUser: konnectivity-server
+          kubeAPIserverUser: kube-apiserver
+          kubeSchedulerUser: kube-scheduler
+      kind: Cluster
+      metadata:
+        name: k0s
+      spec:
+        api:
+          address: 10.0.2.15
+          sans:
+          - 10.0.2.15
+          - 192.168.2.179
+        storage:
+          type: etcd
+          etcd:
+            peerAddress: 10.0.2.15
+        network:
+          podCIDR: 10.244.0.0/16
+          serviceCIDR: 10.96.0.0/12
+          provider: calico
+          calico:
+            mode: vxlan
+            vxlanPort: 4789
+            vxlanVNI: 4096
+            mtu: 1450
+            wireguard: false
+            flexVolumeDriverPath: /usr/libexec/k0s/kubelet-plugins/volume/exec/nodeagent~uds
+            withWindowsNodes: false
+            overlay: Always
+        podSecurityPolicy:
+          defaultPolicy: 00-k0s-privileged
+      telemetry:
+        interval: 10m0s
+        enabled: true
+      extensions:
+        helm:
+          repositories:
+          - name: traefik
+            url: https://helm.traefik.io/traefik
+          - name: bitnami
+            url: https://charts.bitnami.com/bitnami
+          charts:
+          - name: traefik
+            chartname: traefik/traefik
+            version: "9.11.0"
+            namespace: default
+          - name: metallb
+            chartname: bitnami/metallb
+            version: "1.0.1"
+            namespace: default
+            values: |2
+              configInline:
+                address-pools:
+                - name: generic-cluster-pool
+                  protocol: layer2
+                  addresses:
+                  - 192.168.2.30-192.168.2.35

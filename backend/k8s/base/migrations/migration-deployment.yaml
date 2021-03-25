@@ -1,0 +1,11 @@
+apiVersion: batch/v1
+kind: job
+metadata:
+  name: timescale-migration
+spec:
+  template:
+    spec:
+      containers:
+        - name: timescale-migrations
+          container: timescale-migrations
+          imagePullPolicy: never
