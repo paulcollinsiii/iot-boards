@@ -8,21 +8,19 @@
 #include <i2cdev.h>
 #include <mqtt_client.h>
 #include <nvs_flash.h>
-#include <shtc3.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 
 #include "mqtt.h"
+#include "sensor.h"
 #include "wifi_provision.h"
 
 static const char *TAG = "app";
 
-static i2c_dev_t humidity_sensor;
 static time_t now;
-static char strftime_buf[64];
 
-void hardware_setup() {
+void hardware_init() {
   /* Initialize NVS partition */
   esp_err_t ret = nvs_flash_init();
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
@@ -37,21 +35,19 @@ void hardware_setup() {
 
   /* Initialize I2C and sensors */
   i2cdev_init();
-  shtc3_init_desc(&humidity_sensor, I2C_NUM_1, GPIO_NUM_23, GPIO_NUM_22);
-  shtc3_init(&humidity_sensor);
+  sensor_init();
 
   /* Set timezone from NVS */
   setenv("TZ", "EST5EDT,M3.2.0/2,M11.1.0", 1);
   tzset();
 }
 
-void client_setup() {
+void client_init() {
   struct tm timeinfo;
   const int retry_count = 10;
   int retry = 0;
 
   wifi_provision();
-  ESP_ERROR_CHECK(mqtt_setup());
 
   //[> Network time setup <]
   sntp_setoperatingmode(SNTP_OPMODE_POLL);
@@ -77,40 +73,14 @@ void client_setup() {
 }
 
 void app_main() {
-  hardware_setup();
-  client_setup();
+  ESP_LOGI(TAG, "setup mqtt lib...");
+  ESP_ERROR_CHECK(mqtt_init());
 
-  float temp, humidity = 0.0;
-  char *json;
-  cJSON *root, *sensors, *sensorData;
+  ESP_LOGI(TAG, "mqtt lib initted.");
 
-  while (1) {
-    time(&now);
-    strftime(strftime_buf, sizeof(strftime_buf), "%FT%H:%M:%SZ", gmtime(&now));
-    ESP_ERROR_CHECK(shtc3_measure(&humidity_sensor, &temp, &humidity));
+  hardware_init();
+  client_init();
 
-    root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "name", "bub");
-    cJSON_AddStringToObject(root, "timestamp", strftime_buf);
-    cJSON_AddItemToObject(root, "sensorData", sensors = cJSON_CreateArray());
-    sensorData = cJSON_CreateObject();
-    cJSON_AddItemToArray(sensors, sensorData);
-    cJSON_AddStringToObject(sensorData, "name", "temp");
-    cJSON_AddItemToObject(sensorData, "value", cJSON_CreateNumber(temp));
-    cJSON_AddStringToObject(sensorData, "units", "C");
-
-    sensorData = cJSON_CreateObject();
-    cJSON_AddItemToArray(sensors, sensorData);
-    cJSON_AddStringToObject(sensorData, "name", "humidity");
-    cJSON_AddItemToObject(sensorData, "value", cJSON_CreateNumber(humidity));
-    cJSON_AddStringToObject(sensorData, "units", "% Rh");
-
-    json = cJSON_PrintUnformatted(root);
-
-    ESP_LOGI(TAG, "JSON Output: %s", json);
-    mqtt_publish_sensor_data(json);
-    cJSON_Delete(root);
-
-    vTaskDelay(2500 / portTICK_PERIOD_MS);
-  }
+  mqtt_start();
+  sensor_start();
 }
