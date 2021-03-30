@@ -1,5 +1,6 @@
 #include "mqtt.h"
 
+#include <backoff_algorithm.h>
 #include <cJSON.h>
 #include <esp_log.h>
 #include <freertos/event_groups.h>
@@ -15,7 +16,11 @@
 #define MQTT_CLIENT_CONNECTED_BIT (1 << 1)
 #define MQTT_CLIENT_DISCONNECTED_BIT (1 << 2)
 
+#define MQTT_BASE_BACKOFF_SEC 60
+#define MQTT_MAX_BACKOFF 15 * 60
+
 static const char *TAG = "mqtt";
+static BackoffAlgorithmContext_t retryParams;
 
 typedef struct {
   EventGroupHandle_t events;
@@ -49,6 +54,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
     case MQTT_EVENT_CONNECTED:
       ESP_LOGD(TAG, "MQTT_EVENT_CONNECTED");
       xEventGroupSetBits(state.events, MQTT_CLIENT_CONNECTED_BIT);
+      // Reset backoff delay since we got connected
+      BackoffAlgorithm_InitializeParams(&retryParams, MQTT_BASE_BACKOFF_SEC,
+                                        MQTT_MAX_BACKOFF,
+                                        BACKOFF_ALGORITHM_RETRY_FOREVER);
       break;
     case MQTT_EVENT_DISCONNECTED:
       ESP_LOGD(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -81,7 +90,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
  *  - ESP_FAIL: Failed to data queue
  */
 static void mqtt_client_watcher(void *pvParam) {
-  int disconn_event_count = 0;
+  uint16_t nextRetryBackoff = 0;
+  uint8_t disconn_event_count = 0;
   ESP_LOGI(TAG, "Starting mqtt-client-watchdog");
   for (;;) {
     xEventGroupWaitBits(state.events,
@@ -90,15 +100,23 @@ static void mqtt_client_watcher(void *pvParam) {
                         pdTRUE,   // Wait for ALL bits to be set
                         portMAX_DELAY);
     xEventGroupClearBits(state.events, MQTT_CLIENT_DISCONNECTED_BIT);
-    ESP_LOGI(TAG, "Counting a disconnected error event for backoff");
-    // TODO: Use the backoff library to do something more like expo backoff,
-    // start with server retries of 1 min and go up to 15?
+    ESP_LOGD(TAG, "Counting a disconnected error event for backoff");
     disconn_event_count++;
-    if (disconn_event_count > 3) {
-      ESP_LOGI(TAG, "Too many mqtt disconnections, stopping mqtt");
+    if (disconn_event_count == 2) {
+      BackoffAlgorithm_GetNextBackoff(&retryParams, esp_random(),
+                                      &nextRetryBackoff);
+      ESP_LOGI(TAG, "Too many mqtt disconnections, backing off for %d seconds",
+               nextRetryBackoff);
       esp_mqtt_client_stop(state.client);
       xEventGroupClearBits(state.events,
                            MQTT_CLIENT_STARTED_BIT | MQTT_CLIENT_CONNECTED_BIT);
+
+      vTaskDelay((nextRetryBackoff * 1000) / portTICK_PERIOD_MS);
+
+      ESP_LOGI(TAG, "attempting to connect to mqtt again...");
+      esp_mqtt_client_start(state.client);
+      xEventGroupSetBits(state.events, MQTT_CLIENT_STARTED_BIT);
+      disconn_event_count = 0;
     }
   }
 }
@@ -151,6 +169,9 @@ esp_err_t mqtt_init() {
   state.disabled_at = 0;
   state.retry_count = 0;
   state.client = esp_mqtt_client_init(&mqtt_cfg);
+  BackoffAlgorithm_InitializeParams(&retryParams, MQTT_BASE_BACKOFF_SEC,
+                                    MQTT_MAX_BACKOFF,
+                                    BACKOFF_ALGORITHM_RETRY_FOREVER);
 
   return ESP_OK;
 }
