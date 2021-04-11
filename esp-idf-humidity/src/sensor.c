@@ -10,6 +10,9 @@
 #define SENSOR_TASK_NAME "sensor"
 #define SENSOR_TASK_STACKSIZE 2 * 1024
 #define SENSOR_RINBUFFER_MAXITEMS 60 * 60
+#define SENSOR_MAX_ENTRY_JSONIFY \
+  10  // Every call only drain 10 entries from the ring buffer then retrigger
+      // the callback
 
 static const char *TAG = "sensor";
 static TaskHandle_t sensorHandle = NULL;
@@ -22,6 +25,8 @@ static struct state {
 static void sensor_task(void *pvParam) {
   UBaseType_t res;
   sensor_data_t data;
+  struct tm timeinfo;
+  char timestamp[32];
 
   ESP_LOGD(TAG, "sensor task entering loop");
   UBaseType_t rb_count;
@@ -35,8 +40,13 @@ static void sensor_task(void *pvParam) {
       ESP_LOGW(TAG, "Failed to write sensor data to ringbuffer");
     }
 
+    gmtime_r(&data.timestamp, &timeinfo);
+    strftime(timestamp, 32, "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
     ESP_LOGD(TAG, "Data written to ringbuffer");
+    ESP_LOGI(TAG, "Time: %s Temp: %0.3f  Humidity: %0.3f", timestamp, data.temp,
+             data.humidity);
     vRingbufferGetInfo(buf_handle, NULL, NULL, NULL, NULL, &rb_count);
+    // TODO: This is test code to buffer measurements
     if (rb_count % 5 == 0) {
       xTaskNotifyGive(mqtt_task_handle);
       ESP_LOGI(TAG, "buffered readings: %d", rb_count);
@@ -101,6 +111,7 @@ esp_err_t sensor_jsonify(cJSON *root) {
   size_t item_size;
   ESP_LOGD(TAG, "Reading ringbuffer");
 
+  int drained = 0;
   do {
     sensorValues =
         (sensor_data_t *)xRingbufferReceive(buf_handle, &item_size, 0);
@@ -109,16 +120,16 @@ esp_err_t sensor_jsonify(cJSON *root) {
       return ESP_OK;  // Buffer has been drained
     }
 
-    cJSON *sensorArray = cJSON_GetObjectItemCaseSensitive(root, "sensorData");
+    drained++;
+    cJSON *sensorArray = cJSON_GetObjectItemCaseSensitive(root, "data");
 
     if (sensorArray == NULL) {
-      cJSON_AddItemToObject(root, "sensorData",
-                            sensorArray = cJSON_CreateArray());
+      cJSON_AddItemToObject(root, "data", sensorArray = cJSON_CreateArray());
     }
 
     sensorData = cJSON_CreateObject();
     cJSON_AddItemToArray(sensorArray, sensorData);
-    cJSON_AddStringToObject(sensorData, "name", "temp");
+    cJSON_AddStringToObject(sensorData, "sensor", "temperature");
     cJSON_AddItemToObject(sensorData, "value",
                           cJSON_CreateNumber(sensorValues->temp));
     cJSON_AddStringToObject(sensorData, "units", "C");
@@ -131,7 +142,12 @@ esp_err_t sensor_jsonify(cJSON *root) {
     cJSON_AddStringToObject(sensorData, "units", "% Rh");
 
     vRingbufferReturnItem(buf_handle, (void *)sensorValues);
-  } while (sensorValues != NULL);
+  } while (sensorValues != NULL && drained < SENSOR_MAX_ENTRY_JSONIFY);
+
+  // TODO: This WILL cause rate limiting problems... how to throttle?
+  if (drained == SENSOR_MAX_ENTRY_JSONIFY) {
+    xTaskNotifyGive(mqtt_task_handle);
+  }
 
   return ESP_OK;
 }

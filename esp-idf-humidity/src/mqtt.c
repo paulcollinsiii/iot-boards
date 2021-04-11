@@ -132,6 +132,7 @@ static void mqtt_task(void *pvParam) {
   cJSON *root;
   char *json;
   uint8_t idx;
+  int res;
 
   ESP_LOGD(TAG, "mqtt task entering loop");
   for (;;) {
@@ -142,18 +143,30 @@ static void mqtt_task(void *pvParam) {
                         pdFALSE,  // Do NOT clear the bits before returning
                         pdTRUE,   // Wait for ALL bits to be set
                         portMAX_DELAY);
-    ESP_LOGI(TAG, "building & sending JSON");
+    ESP_LOGD(TAG, "building JSON");
 
     root = cJSON_CreateObject();
 
-    ESP_LOGI(TAG, "Handlers: %d", state.handler_count);
+    ESP_LOGD(TAG, "Handlers: %d", state.handler_count);
     for (idx = 0; idx < state.handler_count; idx++) {
       state.handlers[idx](root);
     }
 
     json = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
-    ESP_LOGI(TAG, "JSON QUEUED MSG Output: %s", json);
+    ESP_LOGI(TAG, "JSON MSG: %s", json);
+    res = esp_mqtt_client_enqueue(
+        state.client,
+        "/sensordata/",  // TODO: This needs to be client specific
+        json,
+        0,     // Calc the length from the msg directly
+        1,     // QoS 1
+        1,     // Retain as the last msg from this device
+        true,  // not needed for QoS 1, but if that is set to 0 it would be
+    );
+    if (res == -1) {
+      ESP_LOGE(TAG, "Failed to enqueue mqtt message!");
+    }
   }
 }
 
