@@ -1,0 +1,21 @@
+{{- if .Values.ingress.enabled -}}
+{{- $fullName := include "eclipse-mqtt.fullname" . -}}
+{{- $labels := include "eclipse-mqtt.labels" . -}}
+{{- range .Values.ingress.ports }}
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRouteTCP
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- $labels | nindent 4 }}
+  {{- with $.Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  routes:
+    - services:
+      - name: {{ $fullName }}
+        port: {{ .port }}
+{{- end }}
+{{- end }}

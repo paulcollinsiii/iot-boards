@@ -1,0 +1,8 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: kaffi-homelab-ca
+  namespace: default
+spec:
+  ca:
+    secretName: kaffi-homelab-ca

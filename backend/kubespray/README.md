@@ -18,7 +18,11 @@ rabbit hole) setup that can respond to traffic. Behold the way my friends. You
 don't want to fight all of Kubernetes? Behold the way.
 
 * Modify k0sctl.yaml for the IP addresses of your vagrant instance
-* k0sctl apply -c k0sctl.yaml
+* k0sctl apply
 * k0sctl kubeconfig > admin.conf
 * export KUBECONFIG=$(pwd)/admin.conf
-* Victory
+* ./post-setup.sh
+
+The post-setup script takes care of pulling the ca-cert out and adding it to
+the trusted root authorities for the master. This is needed so the private
+docker repository won't reject the self-signed cert

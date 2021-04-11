@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: mqtt-config
+  name: {{ include "eclipse-mqtt.fullname" . }}
 data:
   mosquitto: |
     persistent_client_expiration 2h
