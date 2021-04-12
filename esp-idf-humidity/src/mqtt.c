@@ -137,7 +137,7 @@ static void mqtt_task(void *pvParam) {
   ESP_LOGD(TAG, "mqtt task entering loop");
   for (;;) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    ESP_LOGI(TAG, "notified, waiting for mqtt server connection");
+    ESP_LOGD(TAG, "notified, waiting for mqtt server connection");
     xEventGroupWaitBits(state.events,
                         MQTT_CLIENT_STARTED_BIT | MQTT_CLIENT_CONNECTED_BIT,
                         pdFALSE,  // Do NOT clear the bits before returning
@@ -155,14 +155,13 @@ static void mqtt_task(void *pvParam) {
     json = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     ESP_LOGI(TAG, "JSON MSG: %s", json);
-    res = esp_mqtt_client_enqueue(
+    res = esp_mqtt_client_publish(
         state.client,
         "/sensordata/",  // TODO: This needs to be client specific
         json,
-        0,     // Calc the length from the msg directly
-        1,     // QoS 1
-        1,     // Retain as the last msg from this device
-        true,  // not needed for QoS 1, but if that is set to 0 it would be
+        0,  // Calc the length from the msg directly
+        1,  // QoS 1
+        1   // Retain as the last msg from this device
     );
     if (res == -1) {
       ESP_LOGE(TAG, "Failed to enqueue mqtt message!");
@@ -175,7 +174,7 @@ esp_err_t mqtt_init() {
   mqtt_task_handle = NULL;
 
   esp_mqtt_client_config_t mqtt_cfg = {
-      .uri = "mqtt://192.168.2.31"};  // TODO: DNS this...
+      .uri = "mqtt://mqtt.kaffi.home"};  // TODO: Make this configurable
 
   state.events = xEventGroupCreate();
   xEventGroupClearBits(state.events, 0xFF);  // Zero out everything

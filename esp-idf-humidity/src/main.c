@@ -51,7 +51,8 @@ void client_init() {
 
   //[> Network time setup <]
   sntp_setoperatingmode(SNTP_OPMODE_POLL);
-  sntp_setservername(0, "192.168.2.1");  // TODO: DNS this...
+  sntp_setservername(0,
+                     "opensense.kaffi.home");  // TODO: Make this configurable
   sntp_set_sync_mode(SNTP_SYNC_MODE_SMOOTH);
   sntp_init();
   time(&now);
