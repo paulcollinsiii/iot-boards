@@ -29,6 +29,9 @@ spec:
                 version: "9.11.0"
                 namespace: default
                 values: |2
+                  providers:
+                    kubernetesIngress:
+                      enabled: true
                   ports:
                     mqtt:
                       port: 1883

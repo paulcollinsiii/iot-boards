@@ -41,6 +41,9 @@ securityContext: {}
 # right now
 service:
   type: LoadBalancer
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: mqtt.kaffi.home
+    metallb.universe.tf/allow-shared-ip: kaffi
   ports:
     - port: 1883
       targetPort: 1883
@@ -49,7 +52,8 @@ service:
 
 ingress:
   enabled: false
-  annotations: {}
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: mqtt.kaffi.home
   ports:
     - port: 1883
 

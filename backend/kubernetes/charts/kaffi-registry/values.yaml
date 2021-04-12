@@ -12,18 +12,7 @@ image:
 
 cert:
   dnsNames:
-    - registry.kaffi.io
-  ipAddresses:
-    - 192.168.2.30
-    - 192.168.2.31
-    - 192.168.2.32
-    - 192.168.2.33
-    - 192.168.2.34
-    - 192.168.2.35
-    - 192.168.2.36
-    - 192.168.2.37
-    - 192.168.2.38
-    - 192.168.2.39
+    - dockerhub.kaffi.home
 
 imagePullSecrets: []
 nameOverride: "registry"
@@ -52,12 +41,15 @@ securityContext: {}
   # runAsUser: 1000
 
 service:
-  type: ClusterIP
+  type: LoadBalancer
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: dockerhub.kaffi.home
+    metallb.universe.tf/allow-shared-ip: kaffi
   port: 5000
 
 ingress:
-  enabled: true
-  annotations: {}
+  enabled: false
+  annotations:
   ports:
     - entrypoint: docker
       port: 5000
