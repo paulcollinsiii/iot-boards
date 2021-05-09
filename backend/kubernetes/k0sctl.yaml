@@ -5,13 +5,12 @@ metadata:
 spec:
   hosts:
   - ssh:
-      address: 192.168.2.185
+      address: 192.168.2.196
       user: vagrant
       port: 22
-      keyPath: /home/paulcollins/coding/iot-boards/backend/kubernetes/.vagrant/machines/default/virtualbox/private_key
     role: controller+worker
   k0s:
-    version: "0.13.0"
+    version: 1.21.3+k0s.0
     config:
       spec:
         extensions:
@@ -23,6 +22,8 @@ spec:
               url: https://charts.bitnami.com/bitnami
             - name: jetstack
               url: https://charts.jetstack.io
+            - name: timescale
+              url: https://raw.githubusercontent.com/timescale/timescaledb-kubernetes/master/charts/repo/
             charts:
               - name: traefik
                 chartname: traefik/traefik
@@ -60,3 +61,17 @@ spec:
                 namespace: cert-manager
                 values: |2
                   installCRDs: true
+              - name: external-dns
+                chartname: bitnami/external-dns
+                version: "v4.10.0"
+                namespace: default
+                values: |2
+                  provider: rfc2136
+                  rfc2136:
+                    host: "192.168.2.1"
+                    port: 53530
+                    zone: "kaffi.home"
+                    tsigSecretAlg: hmac-sha256
+                    tsigKeyname: rndc-key
+                    secretName: rndc-key
+                    minTTL: "2m"
