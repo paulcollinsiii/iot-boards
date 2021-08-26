@@ -19,10 +19,10 @@ don't want to fight all of Kubernetes? Behold the way.
 
 * Modify k0sctl.yaml for the IP addresses of your vagrant instance
 * k0sctl apply
-* k0sctl kubeconfig > admin.conf
-* export KUBECONFIG=$(pwd)/admin.conf
 * ./post-setup.sh
 
-The post-setup script takes care of pulling the ca-cert out and adding it to
-the trusted root authorities for the master. This is needed so the private
-docker repository won't reject the self-signed cert
+The post-setup script takes care of:
+* pulling the ca-cert out and adding it to the trusted root authorities for the master.
+  * This is needed so the private docker repository won't reject the self-signed cert
+* Setting up a private docker repository stored in cluster (ephemeral)
+* Setting up MQTT in the `iot` namespace
