@@ -1,0 +1,12 @@
+{{- $fullName := include "kaffi-registry.fullname" . -}}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ $fullName }}
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteOnce
+  hostPath:
+    path: /tmp/repository

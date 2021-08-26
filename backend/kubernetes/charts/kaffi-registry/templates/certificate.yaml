@@ -1,0 +1,24 @@
+{{- $fullName := include "kaffi-registry.fullname" . -}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $fullName }}-cert
+spec:
+  isCA: false
+  usages:
+    - server auth
+  secretName: {{ $fullName }}-private
+  {{- if $.Values.cert.dnsNames }}
+  dnsNames:
+    {{- toYaml $.Values.cert.dnsNames | nindent 4 }}
+  {{- end }}
+  {{- if $.Values.cert.ipAddresses }}
+  ipAddresses:
+    {{- toYaml $.Values.cert.ipAddresses | nindent 4 }}
+  {{- end }}
+  duration: 2160h   # 90 days
+  renewBefore: 360h # 15 days
+  issuerRef:
+    name: kaffi-homelab-ca
+    kind: Issuer
+    group: cert-manager.io

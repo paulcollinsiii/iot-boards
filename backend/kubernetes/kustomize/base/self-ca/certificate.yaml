@@ -1,0 +1,13 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kaffi-homelab-ca
+  namespace: default
+spec:
+  isCA: true
+  commonName: kaffi-homelab-system
+  secretName: kaffi-homelab-ca
+  issuerRef:
+    name: kaffi-homelab-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io

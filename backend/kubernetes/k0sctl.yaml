@@ -1,0 +1,77 @@
+apiVersion: k0sctl.k0sproject.io/v1beta1
+kind: Cluster
+metadata:
+  name: k0s-cluster
+spec:
+  hosts:
+  - ssh:
+      address: 192.168.2.196
+      user: vagrant
+      port: 22
+    role: controller+worker
+  k0s:
+    version: 1.21.3+k0s.0
+    config:
+      spec:
+        extensions:
+          helm:
+            repositories:
+            - name: traefik
+              url: https://helm.traefik.io/traefik
+            - name: bitnami
+              url: https://charts.bitnami.com/bitnami
+            - name: jetstack
+              url: https://charts.jetstack.io
+            - name: timescale
+              url: https://raw.githubusercontent.com/timescale/timescaledb-kubernetes/master/charts/repo/
+            charts:
+              - name: traefik
+                chartname: traefik/traefik
+                version: "9.11.0"
+                namespace: default
+                values: |2
+                  providers:
+                    kubernetesIngress:
+                      enabled: true
+                  ports:
+                    mqtt:
+                      port: 1883
+                      protocol: TCP
+                      expose: true
+                      exposedPort: 1883
+                    docker:
+                      port: 5000
+                      protocol: TCP
+                      expose: true
+                      exposedPort: 5000
+              - name: metallb
+                chartname: bitnami/metallb
+                version: "1.0.1"
+                namespace: default
+                values: |2
+                  configInline:
+                    address-pools:
+                    - name: generic-cluster-pool
+                      protocol: layer2
+                      addresses:
+                      - 192.168.2.30-192.168.2.35
+              - name: cert-manager
+                chartname: jetstack/cert-manager
+                version: "v1.3.0"
+                namespace: cert-manager
+                values: |2
+                  installCRDs: true
+              - name: external-dns
+                chartname: bitnami/external-dns
+                version: "v4.10.0"
+                namespace: default
+                values: |2
+                  provider: rfc2136
+                  rfc2136:
+                    host: "192.168.2.1"
+                    port: 53530
+                    zone: "kaffi.home"
+                    tsigSecretAlg: hmac-sha256
+                    tsigKeyname: rndc-key
+                    secretName: rndc-key
+                    minTTL: "2m"

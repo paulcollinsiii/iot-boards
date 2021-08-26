@@ -1,0 +1,24 @@
+{{- if .Values.ingress.enabled -}}
+{{- $fullName := include "kaffi-registry.fullname" . -}}
+{{- $labels := include "kaffi-registry.labels" . -}}
+{{- range .Values.ingress.ports }}
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRouteTCP
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- $labels | nindent 4 }}
+  {{- with $.Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  entryPoints:
+    - {{ .entrypoint | default .name }}
+  routes:
+    - match: HostSNI(`*`)
+      services:
+      - name: {{ $fullName }}
+        port: {{ .port }}
+{{- end }}
+{{- end }}

@@ -1,8 +1,8 @@
 # Project specific ignores
 
 secrets.h
-backend/mqtt/mosquitto/data/
-backend/mqtt/mosquitto/log/
+backend/kubernetes/ca.crt
+backend/kubernetes/rndc-key
 
 # Gitignore file from github/gitignore files.
 # * C++
