@@ -1,2 +1,8 @@
 .pio
 sdkconfig
+sdkconfig.featheresp32
+sdkconfig.featheresp32.old
+
+# Project generated files
+*.pb-c.[ch]
+*_pb2.py

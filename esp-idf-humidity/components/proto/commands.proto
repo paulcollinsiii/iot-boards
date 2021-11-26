@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+message AlarmAddRequest {
+  string crontab = 1;
+  bool oneshot = 2;
+}
+
+message AlarmAddResponse {
+}
+
+message AlarmDeleteRequest {
+  string crontab = 1;
+}
+
+message AlarmDeleteResponse {
+}
+
+message AlarmListRequest {
+}
+
+message AlarmListResponse {
+  message Alarm {
+    string crontab = 1;
+    bool oneshot = 2;
+    bool enabled = 3;
+  }
+  repeated Alarm alarms = 3;
+}
+
+message CommandRequest {
+  string uuid = 1;
+  oneof cmd {
+    AlarmAddRequest alarm_add_request = 2;
+    AlarmDeleteRequest alarm_delete_request = 3;
+    AlarmListRequest alarm_list_request = 4;
+  }
+}
+
+message CommandResponse {
+  enum ret_code_t {
+    HANDLED = 0;
+    NOTMINE = 1;
+    ERR = 2;
+  }
+  string uuid = 1;
+  ret_code_t ret_code = 2;
+  oneof resp {
+    AlarmAddResponse alarm_add_response = 3;
+    AlarmDeleteResponse alarm_delete_response = 4;
+    AlarmListResponse alarm_list_response = 5;
+  }
+}

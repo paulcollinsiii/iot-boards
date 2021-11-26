@@ -1,0 +1,8 @@
+menu "Alarm"
+
+config ALARM_NUM_MAX
+  int "Maximum number of configurable alarms"
+  default 3
+  range 1 10
+
+endmenu

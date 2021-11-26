@@ -2,7 +2,7 @@
 
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>
-#include <mqtt.h>
+#include <mqttmgr.h>
 #include <shtc3.h>
 
 #include "freertos/ringbuf.h"
@@ -43,12 +43,12 @@ static void sensor_task(void *pvParam) {
     gmtime_r(&data.timestamp, &timeinfo);
     strftime(timestamp, 32, "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
     ESP_LOGD(TAG, "Data written to ringbuffer");
-    ESP_LOGI(TAG, "Time: %s Temp: %0.3f  Humidity: %0.3f", timestamp, data.temp,
+    ESP_LOGD(TAG, "Time: %s Temp: %0.3f  Humidity: %0.3f", timestamp, data.temp,
              data.humidity);
     vRingbufferGetInfo(buf_handle, NULL, NULL, NULL, NULL, &rb_count);
     // TODO: This is test code to buffer measurements
     if (rb_count % 5 == 0) {
-      xTaskNotifyGive(mqtt_task_handle);
+      ESP_ERROR_CHECK(mqttmgr_notify());
       ESP_LOGI(TAG, "buffered readings: %d", rb_count);
     }
     vTaskDelay(2000 / portTICK_PERIOD_MS);
@@ -84,7 +84,7 @@ esp_err_t sensor_start() {
     return ESP_OK;
   }
 
-  mqtt_register(sensor_jsonify);
+  mqttmgr_register_sensor_encoder(sensor_jsonify);
 
   result = xTaskCreate(sensor_task, SENSOR_TASK_NAME, SENSOR_TASK_STACKSIZE,
                        (void *)1, tskIDLE_PRIORITY, &sensorHandle);
@@ -98,17 +98,14 @@ esp_err_t sensor_start() {
 }
 
 esp_err_t sensor_stop() { return ESP_OK; }
-/**
- * @brief Dump sensor data struct into JSON
- *
- * @return
- *  - ESP_OK: Success
- *  - ESP_FAIL: Failed to data queue
- */
+
 esp_err_t sensor_jsonify(cJSON *root) {
   sensor_data_t *sensorValues;
   cJSON *sensorData;
   size_t item_size;
+  struct tm timeinfo;
+  char timestamp[32];
+
   ESP_LOGD(TAG, "Reading ringbuffer");
 
   int drained = 0;
@@ -127,8 +124,12 @@ esp_err_t sensor_jsonify(cJSON *root) {
       cJSON_AddItemToObject(root, "data", sensorArray = cJSON_CreateArray());
     }
 
+    gmtime_r(&(sensorValues->timestamp), &timeinfo);
+    strftime(timestamp, 32, "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
+
     sensorData = cJSON_CreateObject();
     cJSON_AddItemToArray(sensorArray, sensorData);
+    cJSON_AddStringToObject(sensorData, "timestamp", timestamp);
     cJSON_AddStringToObject(sensorData, "sensor", "temperature");
     cJSON_AddItemToObject(sensorData, "value",
                           cJSON_CreateNumber(sensorValues->temp));
@@ -136,6 +137,7 @@ esp_err_t sensor_jsonify(cJSON *root) {
 
     sensorData = cJSON_CreateObject();
     cJSON_AddItemToArray(sensorArray, sensorData);
+    cJSON_AddStringToObject(sensorData, "timestamp", timestamp);
     cJSON_AddStringToObject(sensorData, "name", "humidity");
     cJSON_AddItemToObject(sensorData, "value",
                           cJSON_CreateNumber(sensorValues->humidity));
@@ -146,7 +148,7 @@ esp_err_t sensor_jsonify(cJSON *root) {
 
   // TODO: This WILL cause rate limiting problems... how to throttle?
   if (drained == SENSOR_MAX_ENTRY_JSONIFY) {
-    xTaskNotifyGive(mqtt_task_handle);
+    ESP_ERROR_CHECK(mqttmgr_notify());
   }
 
   return ESP_OK;
