@@ -1,4 +1,3 @@
-#include <cJSON.h>
 #include <esp_event.h>
 #include <esp_log.h>
 #include <esp_sntp.h>
@@ -6,19 +5,23 @@
 #include <freertos/event_groups.h>
 #include <freertos/task.h>
 #include <i2cdev.h>
-#include <mqtt_client.h>
 #include <nvs_flash.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 
-#include "mqtt.h"
+#include "alarm.h"
+#include "mqttmgr.h"
 #include "sensor.h"
+#include "uuid.h"
 #include "wifi_provision.h"
+
+#define CFG_ID "pciot_cfg_id"
 
 static const char *TAG = "app";
 
 static time_t now;
+static char PRIVATE_ID[37];
 
 void hardware_init() {
   /* Initialize NVS partition */
@@ -32,6 +35,27 @@ void hardware_init() {
     /* Retry nvs_flash_init */
     ESP_ERROR_CHECK(nvs_flash_init());
   }
+
+  nvs_handle_t my_handle;
+  size_t private_id_size = sizeof(PRIVATE_ID);
+  ESP_ERROR_CHECK(nvs_open("nvs", NVS_READWRITE, &my_handle));
+  ret = nvs_get_str(my_handle, CFG_ID, PRIVATE_ID, &private_id_size);
+  switch (ret) {
+    case ESP_OK:
+      ESP_LOGI(TAG, "Private ID read from NVS: %s", PRIVATE_ID);
+      break;
+    case ESP_ERR_NVS_NOT_FOUND:
+      ESP_LOGI(TAG, "Private ID not set, creating...");
+      UUIDGen(PRIVATE_ID);
+      ESP_LOGI(TAG, "UUID Generated: %s", PRIVATE_ID);
+      ESP_ERROR_CHECK(nvs_set_str(my_handle, CFG_ID, PRIVATE_ID));
+      break;
+    default:
+      ESP_LOGE(TAG, "Errors (%s) opening NVS handle", esp_err_to_name(ret));
+      break;
+  }
+
+  nvs_close(my_handle);
 
   /* Initialize I2C and sensors */
   i2cdev_init();
@@ -71,17 +95,16 @@ void client_init() {
     // update 'now' variable with current time
     time(&now);
   }
+
+  // Initialize component libraries (non-hardware)
+  ESP_ERROR_CHECK(mqttmgr_init(PRIVATE_ID));
+  ESP_ERROR_CHECK(alarm_init());
 }
 
 void app_main() {
-  ESP_LOGI(TAG, "setup mqtt lib...");
-  ESP_ERROR_CHECK(mqtt_init());
-
-  ESP_LOGI(TAG, "mqtt lib initted.");
-
   hardware_init();
   client_init();
 
-  mqtt_start();
+  mqttmgr_start();
   sensor_start();
 }
