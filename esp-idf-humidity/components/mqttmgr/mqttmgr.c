@@ -2,27 +2,18 @@
 
 #include <backoff_algorithm.h>
 #include <esp_log.h>
-#include <freertos/event_groups.h>
+#include <freertos/queue.h>
 #include <mqtt_client.h>
 
 #define MQTT_TASK_NAME "mqtt"
-#define MQTT_TASK_STACKSIZE 2 * 1024
+#define MQTT_TASK_STACKSIZE 4 * 1024
 #define MQTT_HANDLERS_MAX 8
 
 #define MQTT_CLIENTWATCHER_NAME "mqtt-watcher"
 #define MQTT_CLIENTWATCHER_STACKSIZE 2 * 1024
 
-#define MQTT_CLIENT_STARTED_BIT (1 << 0)
-#define MQTT_CLIENT_CONNECTED_BIT (1 << 1)
-#define MQTT_CLIENT_DISCONNECTED_BIT (1 << 2)
-
 #define MQTT_BASE_BACKOFF_SEC 60
 #define MQTT_MAX_BACKOFF 15 * 60
-
-#define CMD_REQ_IDX 0
-#define CMD_RESP_IDX 1
-#define LOG_IDX 2
-#define SENSOR_IDX 3
 
 static const char *TAG = "mqtt";  // Logging handle name
 char topic_names[4][64];
@@ -30,9 +21,9 @@ char topic_names[4][64];
 static BackoffAlgorithmContext_t retryParams;
 
 typedef struct {
-  EventGroupHandle_t events;
   TaskHandle_t mqtt_client_watcher_handle;
   TaskHandle_t mqtt_task_handle;
+  QueueHandle_t msg_queue;
 
   time_t disabled_at;
   uint8_t retry_count;
@@ -97,7 +88,7 @@ loop_exit:
   command_response__pack(&resp, buf);
 
   ESP_LOGI(TAG, "mqttmgr_cmd_dispatch - publishing response");
-  if (esp_mqtt_client_publish(state.client, topic_names[CMD_RESP_IDX],
+  if (esp_mqtt_client_publish(state.client, topic_names[MQTTMGR_TOPIC_RESPONSE],
                               (char *)buf, len * sizeof(char),
                               1,  // QoS 1
                               0   // Do not retain cmd responses
@@ -133,21 +124,23 @@ static void mqttmgr_event_handler(void *handler_args, esp_event_base_t base,
       // Reset backoff delay since we connected
       // Subscribe to the command channel
       ESP_LOGD(TAG, "MQTT_EVENT_CONNECTED");
-      xEventGroupSetBits(state.events, MQTT_CLIENT_CONNECTED_BIT);
+      xEventGroupSetBits(mqttmgr_events, MQTTMGR_CLIENT_CONNECTED_BIT);
+      xEventGroupClearBits(mqttmgr_events, MQTTMGR_CLIENT_NOTCONNECTED_BIT);
       BackoffAlgorithm_InitializeParams(&retryParams, MQTT_BASE_BACKOFF_SEC,
                                         MQTT_MAX_BACKOFF,
                                         BACKOFF_ALGORITHM_RETRY_FOREVER);
-      if (esp_mqtt_client_subscribe(state.client, topic_names[CMD_REQ_IDX],
-                                    1) == -1) {
+      if (esp_mqtt_client_subscribe(
+              state.client, topic_names[MQTTMGR_TOPIC_REQUEST], 1) == -1) {
         ESP_LOGE(TAG, "Failed to subscribe to control channel!");
       } else {
-        ESP_LOGI(TAG, "Subscribed to %s", topic_names[CMD_REQ_IDX]);
+        ESP_LOGI(TAG, "Subscribed to %s", topic_names[MQTTMGR_TOPIC_REQUEST]);
       }
       break;
     case MQTT_EVENT_DISCONNECTED:
       ESP_LOGD(TAG, "MQTT_EVENT_DISCONNECTED");
-      xEventGroupClearBits(state.events, MQTT_CLIENT_CONNECTED_BIT);
-      xEventGroupSetBits(state.events, MQTT_CLIENT_DISCONNECTED_BIT);
+      xEventGroupClearBits(mqttmgr_events, MQTTMGR_CLIENT_CONNECTED_BIT);
+      xEventGroupSetBits(mqttmgr_events, MQTTMGR_CLIENT_DISCONNECTED_BIT |
+                                             MQTTMGR_CLIENT_NOTCONNECTED_BIT);
       break;
     case MQTT_EVENT_SUBSCRIBED:
       ESP_LOGD(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
@@ -156,7 +149,7 @@ static void mqttmgr_event_handler(void *handler_args, esp_event_base_t base,
       ESP_LOGD(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
       break;
     case MQTT_EVENT_DATA:
-      if (strcmp(event->topic, topic_names[CMD_REQ_IDX]) == 0) {
+      if (strcmp(event->topic, topic_names[MQTTMGR_TOPIC_REQUEST]) == 0) {
         mqttmgr_cmd_dispatch(event);
       }
       break;
@@ -179,12 +172,13 @@ static void mqttmgr_client_watcher(void *pvParam) {
   uint8_t disconn_event_count = 0;
   ESP_LOGI(TAG, "Starting mqtt-client-watchdog");
   for (;;) {
-    xEventGroupWaitBits(state.events,
-                        MQTT_CLIENT_STARTED_BIT | MQTT_CLIENT_DISCONNECTED_BIT,
-                        pdFALSE,  // Do NOT clear the bits before returning
-                        pdTRUE,   // Wait for ALL bits to be set
-                        portMAX_DELAY);
-    xEventGroupClearBits(state.events, MQTT_CLIENT_DISCONNECTED_BIT);
+    xEventGroupWaitBits(
+        mqttmgr_events,
+        MQTTMGR_CLIENT_STARTED_BIT | MQTTMGR_CLIENT_DISCONNECTED_BIT,
+        pdFALSE,  // Do NOT clear the bits before returning
+        pdTRUE,   // Wait for ALL bits to be set
+        portMAX_DELAY);
+    xEventGroupClearBits(mqttmgr_events, MQTTMGR_CLIENT_DISCONNECTED_BIT);
     ESP_LOGD(TAG, "Counting a disconnected error event for backoff");
     disconn_event_count++;
     if (disconn_event_count == 2) {
@@ -193,14 +187,14 @@ static void mqttmgr_client_watcher(void *pvParam) {
       ESP_LOGI(TAG, "Too many mqtt disconnections, backing off for %d seconds",
                nextRetryBackoff);
       esp_mqtt_client_stop(state.client);
-      xEventGroupClearBits(state.events,
-                           MQTT_CLIENT_STARTED_BIT | MQTT_CLIENT_CONNECTED_BIT);
+      xEventGroupClearBits(mqttmgr_events, MQTTMGR_CLIENT_STARTED_BIT |
+                                               MQTTMGR_CLIENT_CONNECTED_BIT);
 
       vTaskDelay((nextRetryBackoff * 1000) / portTICK_PERIOD_MS);
 
       ESP_LOGI(TAG, "attempting to connect to mqtt again...");
       esp_mqtt_client_start(state.client);
-      xEventGroupSetBits(state.events, MQTT_CLIENT_STARTED_BIT);
+      xEventGroupSetBits(mqttmgr_events, MQTTMGR_CLIENT_STARTED_BIT);
       disconn_event_count = 0;
     }
   }
@@ -209,64 +203,56 @@ static void mqttmgr_client_watcher(void *pvParam) {
 /**
  * @brief Task for sending sensor data
  */
-static void mqttmgr_sensor_topic_task(void *pvParam) {
-  cJSON *root;
-  char *json;
-  uint8_t idx;
+static void mqttmgr_msgqueue_task(void *pvParam) {
   int res;
+  mqttmgr_msg_t msg_buffer;
 
   ESP_LOGD(TAG, "mqtt task entering loop");
   for (;;) {
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    ESP_LOGD(TAG, "notified, waiting for mqtt server connection");
-    xEventGroupWaitBits(state.events,
-                        MQTT_CLIENT_STARTED_BIT | MQTT_CLIENT_CONNECTED_BIT,
-                        pdFALSE,  // Do NOT clear the bits before returning
-                        pdTRUE,   // Wait for ALL bits to be set
-                        portMAX_DELAY);
-    ESP_LOGD(TAG, "building JSON");
-
-    root = cJSON_CreateObject();
-
-    ESP_LOGD(TAG, "Handlers: %d", state.json_handler_cnt);
-    // TODO: RingBuffer draining could happen here, handlers return a MORE_MSGS
-    // flag after gathering max message buffer size amount?
-    for (idx = 0; idx < state.json_handler_cnt; idx++) {
-      state.json_handlers[idx](root);
+    /*ulTaskNotifyTake(pdTRUE, portMAX_DELAY);*/
+    if (pdFALSE == xQueueReceive(state.msg_queue, &msg_buffer, portMAX_DELAY)) {
+      ESP_LOGE(TAG, "Failed to receive msg from msg queue!");
+      abort();
     }
-
-    json = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
-    ESP_LOGD(TAG, "sending sensor data");
-    ESP_LOGD(TAG, "JSON MSG: %s", json);
-    res = esp_mqtt_client_publish(state.client, topic_names[SENSOR_IDX], json,
-                                  0,  // Calc the length from the msg directly
+    xEventGroupWaitBits(
+        mqttmgr_events,
+        MQTTMGR_CLIENT_STARTED_BIT | MQTTMGR_CLIENT_CONNECTED_BIT,
+        pdFALSE,  // Do NOT clear the bits before returning
+        pdTRUE,   // Wait for ALL bits to be set
+        portMAX_DELAY);
+    ESP_LOGD(TAG, "publishing message to topic: %s",
+             topic_names[msg_buffer.topic]);
+    res = esp_mqtt_client_publish(state.client, topic_names[msg_buffer.topic],
+                                  msg_buffer.msg, msg_buffer.len,
                                   1,  // QoS 1
                                   1   // Retain as the last msg from this device
     );
     if (res == -1) {
       ESP_LOGE(TAG, "Failed to enqueue mqtt message!");
+      // TODO: Should this put the message back on the queue?
     }
+    free(msg_buffer.msg);
   }
 }
 
 esp_err_t mqttmgr_init(char *device_id) {
   // Setup topic names
-  sprintf(topic_names[CMD_REQ_IDX], "%s/command/req/", device_id);
-  sprintf(topic_names[CMD_RESP_IDX], "%s/command/resp/", device_id);
-  sprintf(topic_names[SENSOR_IDX], "%s/sensordata/", device_id);
-  sprintf(topic_names[LOG_IDX], "%s/logs/", device_id);
+  sprintf(topic_names[MQTTMGR_TOPIC_REQUEST], "command/%s/req/", device_id);
+  sprintf(topic_names[MQTTMGR_TOPIC_RESPONSE], "command/%s/resp/", device_id);
+  sprintf(topic_names[MQTTMGR_TOPIC_SENSOR], "sensordata/%s/", device_id);
+  sprintf(topic_names[MQTTMGR_TOPIC_LOG], "logs/%s/", device_id);
 
   // Configure MQTT client
   esp_mqtt_client_config_t mqtt_cfg = {
       .buffer_size = 4096,
-      .uri = "mqtt://mqtt.kaffi.home"  // TODO: Make this configurable, store in
-                                       // NVS?
+      .uri = "mqtt://mqtt.iot.kaffi.home"  // TODO: Make this configurable,
+                                           // store in NVS?
   };
 
   // Init state, cmd_handlers, and backoff state
+  mqttmgr_events = xEventGroupCreate();
   state = (mqttmgr_state_t){
-      .events = xEventGroupCreate(),
+      .msg_queue = xQueueCreate(5, sizeof(mqttmgr_msg_t)),
       .disabled_at = 0,
       .retry_count = 0,
       .client = esp_mqtt_client_init(&mqtt_cfg),
@@ -277,7 +263,12 @@ esp_err_t mqttmgr_init(char *device_id) {
     return ESP_FAIL;
   }
 
-  xEventGroupClearBits(state.events, 0xFF);  // Clear all event bits
+  if (state.msg_queue == NULL) {
+    ESP_LOGE(TAG, "Failed to allocate message queue");
+    return ESP_FAIL;
+  }
+
+  xEventGroupClearBits(mqttmgr_events, 0xFF);  // Clear all event bits
   BackoffAlgorithm_InitializeParams(&retryParams, MQTT_BASE_BACKOFF_SEC,
                                     MQTT_MAX_BACKOFF,
                                     BACKOFF_ALGORITHM_RETRY_FOREVER);
@@ -298,9 +289,9 @@ esp_err_t mqttmgr_register_sensor_encoder(esp_err_t (*fn)(cJSON *)) {
 
 esp_err_t mqttmgr_start() {
   BaseType_t result;
-  result = xTaskCreate(mqttmgr_sensor_topic_task, MQTT_TASK_NAME,
-                       MQTT_TASK_STACKSIZE, (void *)1, tskIDLE_PRIORITY,
-                       &state.mqtt_task_handle);
+  result =
+      xTaskCreate(mqttmgr_msgqueue_task, MQTT_TASK_NAME, MQTT_TASK_STACKSIZE,
+                  (void *)1, tskIDLE_PRIORITY, &state.mqtt_task_handle);
   if (result != pdPASS) {
     ESP_LOGE(TAG, "Error starting mqtt task!");
     return ESP_FAIL;
@@ -318,16 +309,16 @@ esp_err_t mqttmgr_start() {
                                  (esp_mqtt_event_id_t)ESP_EVENT_ANY_ID,
                                  mqttmgr_event_handler, state.client);
   esp_mqtt_client_start(state.client);
-  xEventGroupSetBits(state.events, MQTT_CLIENT_STARTED_BIT);
+  xEventGroupSetBits(mqttmgr_events, MQTTMGR_CLIENT_STARTED_BIT);
 
   ESP_LOGI(TAG, "mqtt task started");
   return ESP_OK;
 }
 
 esp_err_t mqttmgr_stop() {
-  if (xEventGroupGetBits(state.events) & MQTT_CLIENT_STARTED_BIT) {
-    xEventGroupClearBits(state.events,
-                         MQTT_CLIENT_STARTED_BIT | MQTT_CLIENT_CONNECTED_BIT);
+  if (xEventGroupGetBits(mqttmgr_events) & MQTTMGR_CLIENT_STARTED_BIT) {
+    xEventGroupClearBits(mqttmgr_events, MQTTMGR_CLIENT_STARTED_BIT |
+                                             MQTTMGR_CLIENT_CONNECTED_BIT);
     esp_mqtt_client_stop(state.client);
   }
 
@@ -338,12 +329,13 @@ esp_err_t mqttmgr_stop() {
   return ESP_OK;
 }
 
-esp_err_t mqttmgr_notify() {
+esp_err_t mqttmgr_queuemsg(mqttmgr_msg_t *msg) {
   if (state.mqtt_task_handle == NULL) {
     return ESP_ERR_INVALID_STATE;
   }
-  xTaskNotifyGive(state.mqtt_task_handle);
-  return ESP_OK;
+  return pdTRUE == xQueueSend(state.msg_queue, msg, portMAX_DELAY)
+             ? ESP_OK
+             : ESP_ERR_NO_MEM;
 }
 
 esp_err_t mqttmgr_register_cmd_handler(cmdhandler *handler) {

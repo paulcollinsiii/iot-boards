@@ -1,0 +1,25 @@
+menu "SHTC3"
+
+config SHTC3_ENABLED
+  bool "Enable SHTC3"
+  default n
+
+config SHTC3_GPIO_SDA
+  depends on SHTC3_ENABLED
+  int "GPIO for SDA"
+  default 23
+  range 1 43
+
+config SHTC3_GPIO_SCL
+  depends on SHTC3_ENABLED
+  int "GPIO for SCL"
+  default 22
+  range 1 43
+
+config SHTC3_I2C_PORTNUM
+  depends on SHTC3_ENABLED
+  int "I2C Port Number"
+  default 0
+  range 0 1
+
+endmenu

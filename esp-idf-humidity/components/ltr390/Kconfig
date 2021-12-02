@@ -1,0 +1,25 @@
+menu "ltr390"
+
+config LTR390_ENABLED
+  bool "Enable LTR390"
+  default n
+
+config LTR390_GPIO_SDA
+  depends on LTR390_ENABLED
+  int "GPIO for SDA"
+  default 23
+  range 1 43
+
+config LTR390_GPIO_SCL
+  depends on LTR390_ENABLED
+  int "GPIO for SCL"
+  default 22
+  range 1 43
+
+config LTR390_I2C_PORTNUM
+  depends on LTR390_ENABLED
+  int "I2C Port Number"
+  default 0
+  range 0 1
+
+endmenu
