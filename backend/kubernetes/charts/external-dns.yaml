@@ -1,0 +1,12 @@
+policy: sync
+rbac:
+  create: true
+provider: rfc2136
+rfc2136:
+  host: "192.168.2.1"
+  port: 53530
+  zone: "kaffi.home"
+  tsigSecretAlg: hmac-sha256
+  tsigKeyname: rndc-key
+  secretName: rndc-key
+  minTTL: "2m"

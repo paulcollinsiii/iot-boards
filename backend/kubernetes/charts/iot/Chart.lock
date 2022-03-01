@@ -1,0 +1,24 @@
+dependencies:
+- name: traefik
+  repository: https://helm.traefik.io/traefik
+  version: 10.9.1
+- name: home-assistant
+  repository: https://k8s-at-home.com/charts/
+  version: 12.0.1
+- name: mosquitto
+  repository: https://k8s-at-home.com/charts/
+  version: 4.2.0
+- name: influxdb
+  repository: https://charts.bitnami.com/bitnami
+  version: 3.0.2
+- name: telegraf
+  repository: https://helm.influxdata.com/
+  version: 1.8.10
+- name: grafana
+  repository: https://grafana.github.io/helm-charts
+  version: 6.20.7
+- name: common
+  repository: https://charts.bitnami.com/bitnami
+  version: 1.10.4
+digest: sha256:77d79057c930b2defcf4352211f1d5d83a6f0f9eb62136b7c876ff1ea0bfad71
+generated: "2022-01-24T22:07:18.395377737-05:00"

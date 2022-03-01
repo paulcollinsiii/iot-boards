@@ -2,31 +2,50 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: tsdb-1
+  name: db-1
   labels:
     type: local
   namespace: iot
 spec:
   storageClassName: local-storage
   capacity:
-    storage: 5Gi
+    storage: 8Gi
   accessModes:
     - ReadWriteOnce
   hostPath:
     path: /kubepaths/tsdb-1
+  persistentVolumeReclaimPolicy: Recycle
 ---
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: tsdb-2
+  name: db-2
   labels:
     type: local
   namespace: iot
 spec:
   storageClassName: local-storage
   capacity:
-    storage: 5Gi
+    storage: 8Gi
   accessModes:
     - ReadWriteOnce
   hostPath:
     path: /kubepaths/tsdb-2
+  persistentVolumeReclaimPolicy: Recycle
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: db-3
+  labels:
+    type: local
+  namespace: iot
+spec:
+  storageClassName: local-storage
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /kubepaths/tsdb-3
+  persistentVolumeReclaimPolicy: Recycle

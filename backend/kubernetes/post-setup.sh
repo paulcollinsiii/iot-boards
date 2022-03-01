@@ -11,5 +11,12 @@ sudo cp ca.crt /usr/local/share/ca-certificates/kaffi.ca.crt
 sudo cp ca.crt /etc/docker/certs.d/dockerhub.kaffi.home:5000/
 sudo update-ca-certificates
 
+helm repo add k8s-at-home https://k8s-at-home.com/charts/
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo add influxdata https://helm.influxdata.com/
+helm repo add traefik https://helm.traefik.io/traefik
+helm repo update
+
 helm install kaffi-registry ./charts/kaffi-registry
 helm install eclipse-mqtt ./charts/eclipse-mqtt -n iot --create-namespace
+helm install iot ./charts/iot -n iot --create-namespace

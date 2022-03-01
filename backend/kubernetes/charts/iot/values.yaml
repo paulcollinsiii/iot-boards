@@ -1,0 +1,324 @@
+# Default values for iot.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+grafana:
+  admin:
+    existingSecret: "telegraf-tokens"
+    userKey: ADMIN_USER
+    passwordKey: ADMIN_PW
+  ingress:
+    enabled: true
+    annotations:
+      kubernetes.io/ingress.class: "traefik"
+      cert-manager.io/cluster-issuer: "kaffi-homelab-issuer"
+      traefik.ingress.kubernetes.io/router.middlewares: "iot-{{ .Release.Namespace }}-https-middleware@kubernetescrd"
+    hosts:
+      - grafana.iot.kaffi.home
+    tls:
+      - hosts:
+          - "grafana.iot.kaffi.home"
+        secretName: "grafana.iot.kaffi.home-cert"
+  rbac:
+    pspEnabled: false
+  sidecar:
+    dashboards:
+      enabled: true
+    datasources:
+      enabled: true
+      # label that the configmaps with datasources are marked with
+      #label: grafana_datasource
+      ## value of label that the configmaps with datasources are set to
+      #labelValue: null
+      ## If specified, the sidecar will search for datasource config-maps inside this namespace.
+      ## Otherwise the namespace in which the sidecar is running will be used.
+      ## It's also possible to specify ALL to search in all namespaces
+      #searchNamespace: null
+      ## Method to use to detect ConfigMap changes. With WATCH the sidecar will do a WATCH requests, with SLEEP it will list all ConfigMaps, then sleep for 60 seconds.
+      #watchMethod: WATCH
+      ## search in configmap, secret or both
+      #resource: both
+      ## Endpoint to send request to reload datasources
+      #reloadURL: "http://localhost:3000/api/admin/provisioning/datasources/reload"
+      #skipReload: false
+
+home-assistant:
+  addons:
+    codeserver:
+      enabled: true
+      image:
+        repository: codercom/code-server
+        tag: 3.9.0
+      workingDir: "/config"
+      args:
+      - --auth
+      - "none"
+      - --user-data-dir
+      - "/config/.vscode"
+      - --extensions-dir
+      - "/config/.vscode"
+      ingress:
+        enabled: true
+        annotations:
+          kubernetes.io/ingress.class: "traefik"
+          cert-manager.io/cluster-issuer: "kaffi-homelab-issuer"
+          # This name is garbage and HAS to be hardcoded because helm doens't do any rendering in the values.yaml
+          # which breaks my ability to script out of this. The name is based "common.names.fullname"-https-middleware
+          # BUT because of namespaces, if this is in a namespace, then traefik ADDS that to it's name.
+          # Thus this name DEPENDS on this chart being deployed as the name "iot" in the "iot" namespace
+          # :rainbowpuke:
+          traefik.ingress.kubernetes.io/router.middlewares: "iot-iot-https-middleware@kubernetescrd"
+        hosts:
+        - host: config.iot.kaffi.home
+          paths:
+          - path: /
+            pathType: Prefix
+        tls:
+          - hosts:
+              - "config.iot.kaffi.home"
+            secretName: "config.iot.kaffi.home-cert"
+      volumeMounts:
+      - name: config
+        mountPath: /config
+
+  envFrom:
+    - secretRef:
+        name: "telegraf-tokens"
+  ingress:
+    # -- Enable and configure ingress settings for the chart under this key.
+    # @default -- See values.yaml
+    main:
+      enabled: true
+      annotations:
+        kubernetes.io/ingress.class: "traefik"
+        cert-manager.io/cluster-issuer: "kaffi-homelab-issuer"
+        # This name is garbage and HAS to be hardcoded because helm doens't do any rendering in the values.yaml
+        # which breaks my ability to script out of this. The name is based "common.names.fullname"-https-middleware
+        # BUT because of namespaces, if this is in a namespace, then traefik ADDS that to it's name.
+        # Thus this name DEPENDS on this chart being deployed as the name "iot" in the "iot" namespace
+        # :rainbowpuke:
+        traefik.ingress.kubernetes.io/router.middlewares: "iot-iot-https-middleware@kubernetescrd"
+      hosts:
+        - host: "iot.kaffi.home"
+          paths:
+            - path: "/"
+      tls:
+        - hosts:
+          - "iot.kaffi.home"
+          secretName: "iot.kaffi.home-cert"
+
+  persistence:
+    config:
+      enabled: true
+      storageClass: "local-storage"
+
+
+influxdb:
+  auth:
+    existingSecret: "kaffi-home-influx-users"
+  influxdb:
+    containerSecurityContext:
+      enabled: true
+      runAsUser: 1000
+      runAsNonRoot: true
+    podSecurityContext:
+      enabled: true
+      fsGroup: 1000
+
+  ingress:
+    enabled: true
+    tls: false
+    ## @param ingress.pathType Ingress path type
+    ##
+    pathType: ImplementationSpecific
+    ## @param ingress.apiVersion Force Ingress API version (automatically detected if not set)
+    ##
+    apiVersion: ""
+    ## @param ingress.hostname Default host for the ingress resource
+    ##
+    hostname: influxdb.iot.kaffi.home
+    ## @param ingress.path Ingress path*' in order to use this
+    ## with ALB ingress controllers.
+    ##
+    path: /
+    ## @param ingress.annotations Additional annotations for the Ingress resource. To enable certificate autogeneration, place here your cert-manager annotations.
+    ## For a full list of possible ingress annotations, please see
+    ## ref: https://github.com/kubernetes/ingress-nginx/blob/master/docs/user-guide/nginx-configuration/annotations.md
+    ## Use this parameter to set the required annotations for cert-manager, see
+    ## ref: https://cert-manager.io/docs/usage/ingress/#supported-annotations
+    ##
+    ## e.g:
+    ## annotations:
+    ##   kubernetes.io/ingress.class: nginx
+    ##   cert-manager.io/cluster-issuer: cluster-issuer-name
+    ##
+    annotations:
+      kubernetes.io/ingress.class: "traefik"
+      traefik.ingress.kubernetes.io/router.middlewares: "iot-{{ .Release.Namespace }}-https-middleware@kubernetescrd"
+    ingressClassName: ""
+
+  persistence:
+    enabled: true
+    existingClaim: ""
+    storageClass: "local-storage"
+    accessModes:
+      - ReadWriteOnce
+    size: 8Gi
+
+  volumePermissions:
+    enabled: false
+
+
+mosquitto:
+  configmap:
+    mosquitto-extraoptions:
+      enabled: true
+      data:
+        extra_options.conf: |-
+          persistent_client_expiration 14d
+          log_dest stderr
+          log_type information
+          log_timestamp true
+          log_timestamp_format %Y-%m-%dT%H:%M:%S
+
+  persistence:
+    # -- Configure a persistent volume to place mosquitto data in.
+    # When enabled, this enables `persistence` and `persistence_location` in the mosquitto config.
+    # @default -- See values.yaml
+    data:
+      enabled: true
+      mountPath: /mosquitto/data
+      storageClass: "local-storage"
+      size: 1Gi
+      accessMode: ReadWriteOnce
+    # -- Configure a persistent volume to place *.conf mosquitto-config-files in.
+    # When enabled, this gets set as `include_dir` in the mosquitto config.
+    # @default -- See values.yaml
+    configinc:
+      name: "{{ .Release.Name }}-{{ .Chart.Name }}-mosquitto-extraoptions"
+      enabled: true
+      mountPath: /mosquitto/configinc
+      type: configMap
+
+  service:
+    main:
+      annotations:
+        external-dns.alpha.kubernetes.io/hostname: mqtt.iot.kaffi.home
+        metallb.universe.tf/allow-shared-ip: kaffi
+      type: LoadBalancer
+      ports:
+        http:
+          enabled: false
+        mqtt:
+          enabled: true
+          port: 1883
+
+telegraf:
+  envFromSecret: "telegraf-tokens"
+  pdb:  # PodDisruptionBudgets are deprecated. Stahp.
+    create: false
+
+  service:
+    enabled: false
+    type: ClusterIP
+    annotations: {}
+
+  config:
+    agent:
+      interval: "1s"
+      round_interval: false
+      metric_batch_size: 1000
+      metric_buffer_limit: 10000
+      collection_jitter: "0s"
+      flush_interval: "10s"
+      flush_jitter: "0s"
+      precision: ""
+      debug: false
+      quiet: false
+      logfile: ""
+      hostname: "$HOSTNAME"
+      omit_hostname: true
+    processors: {}
+    outputs:
+      - influxdb_v2:
+          urls:
+            - "http://iot-influxdb:8086"
+          organization: "primary"
+          bucket: "primary"
+          token: "$ADMIN_TOKEN"
+    inputs:
+      - mqtt_consumer:
+          servers:
+            - "tcp://mqtt.iot.kaffi.home:1883"
+          topics:
+            - "sensordata/#"
+          data_format: "json_v2"
+          qos: 1
+          persistent_session: true
+          client_id: "telegraf-consumer"
+      - mqtt_consumer.topic_parsing:
+          topic: "sensordata/+/"
+          tags: "_/sensor_id/_"
+      - mqtt_consumer.json_v2:
+          measurement_name: "sensordata"
+      - mqtt_consumer.json_v2.object:
+          path: "data"
+          tags:
+            - "sensor"
+            - "unit"
+          timestamp_key: "timestamp"
+          timestamp_format: "2006-01-02T15:04:05Z"
+
+
+traefik:
+  ingressRoute:
+    dashboard:
+      enabled: true
+      # Additional ingressRoute annotations (e.g. for kubernetes.io/ingress.class)
+      annotations:
+        kubernetes.io/ingress.class: "traefik"
+      # Additional ingressRoute labels (e.g. for filtering IngressRoute by custom labels)
+      labels: {}
+
+  providers:
+    kubernetesCRD:
+      enabled: true
+      allowCrossNamespace: false
+      allowExternalNameServices: false
+      # ingressClass: traefik-internal
+      # labelSelector: environment=production,method=traefik
+      namespaces:
+         - "default"
+         - "iot"
+
+    kubernetesIngress:
+      enabled: true
+      allowExternalNameServices: false
+      # labelSelector: environment=production,method=traefik
+      namespaces:
+         - "default"
+         - "iot"
+      # IP used for Kubernetes Ingress endpoints
+      publishedService:
+        enabled: true
+        # Published Kubernetes Service to copy status from. Format: namespace/servicename
+        # By default this Traefik service
+        # pathOverride: ""
+
+  ports:
+    traefik:
+      # Defines whether the port is exposed if service.type is LoadBalancer or
+      # NodePort.
+      #
+      # You SHOULD NOT expose the traefik port on production deployments.
+      # If you want to access it from outside of your cluster,
+      # use `kubectl port-forward` or create a secure ingress
+      expose: true
+    websecure:
+      tls:
+        enabled: true
+        domains:
+         - main: kaffi.home
+           sans:
+             - iot.kaffi.home
+             - "*.iot.kaffi.home"
