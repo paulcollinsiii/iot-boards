@@ -5,14 +5,15 @@ as a simple project to play with hardware and learn about embedded programming.
 Ballooned into doing things the hard way quickly, mainly as a learning
 experience.
 
-Hardware used in this project
+### Hardware used in this project
+#### Microcontrollers
 * [Adafruit ESP32](https://www.adafruit.com/product/3591)
-* [Adafruit SHTC3](https://www.adafruit.com/product/4636)
-* [Adafruit LTR390](https://www.adafruit.com/product/4831) (Not yet enabled, I'll get there)
+* [Adafruit ESP32-S2](https://www.adafruit.com/product/4769)
 
-Later I'll compile & test this out on an [Adafruit
-FeatherS2](https://www.adafruit.com/product/4769) which _should_ work with
-everything but I'll probably be setting up several macros to make it sane
+#### Sensors
+* [Adafruit SHTC3](https://www.adafruit.com/product/4636)
+* [Adafruit SHT4X](https://www.adafruit.com/product/4885)
+* [Adafruit LTR390](https://www.adafruit.com/product/4831) (Not yet enabled, I'll get there)
 
 
 ## Setting up
@@ -30,4 +31,5 @@ Tools used:
 
 Build the
 `pio run -t upload && pio device monitor --raw`
-*
+
+Or you can do it through vscode
