@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package alarm;
+
+message AddRequest {
+  string crontab = 1;
+  bool oneshot = 2;
+}
+
+message AddResponse {}
+
+message DeleteRequest {
+  string crontab = 1;
+}
+
+message DeleteResponse {}
+
+message ListRequest {}
+
+message ListResponse {
+  message Alarm {
+    string crontab = 1;
+    bool oneshot = 2;
+    bool enabled = 3;
+  }
+  repeated Alarm alarms = 3;
+}

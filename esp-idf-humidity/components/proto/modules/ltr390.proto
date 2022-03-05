@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package ltr390;
+
+enum gain_t {
+  GAIN_1 = 0;
+  GAIN_3 = 1;
+  GAIN_6 = 2;
+  GAIN_9 = 3;
+  GAIN_18 = 4;
+}
+
+enum mode_t {
+  ALS = 0;
+  UVS = 1;
+}
+
+enum resolution_t {
+  RESOLUTION_20BIT = 0;
+  RESOLUTION_19BIT = 1;
+  RESOLUTION_18BIT = 2;
+  RESOLUTION_17BIT = 3;
+  RESOLUTION_16BIT = 4;
+  RESOLUTION_13BIT = 5;
+}
+
+enum measurerate_t {
+  MEASURE_25MS = 0;
+  MEASURE_50MS = 1;
+  MEASURE_100MS = 2;  // Default rate after reset
+  MEASURE_200MS = 3;
+  MEASURE_500MS = 4;
+  MEASURE_1000MS = 5;
+  MEASURE_2000MS = 6;
+}
+
+message SetOptionsRequest {
+  bool enable = 2;
+  mode_t mode = 3;
+  resolution_t resolution = 4;
+  measurerate_t measurerate = 5;
+  gain_t gain = 6;
+}
+
+message SetOptionsResponse {
+  bool enable = 2;
+  mode_t mode = 3;
+  resolution_t resolution = 4;
+  measurerate_t measurerate = 5;
+  gain_t gain = 6;
+}
+
+message GetOptionsRequest {}
+
+message GetOptionsResponse {
+  bool enable = 2;
+  mode_t mode = 3;
+  resolution_t resolution = 4;
+  measurerate_t measurerate = 5;
+  gain_t gain = 6;
+}

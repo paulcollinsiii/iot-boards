@@ -11,8 +11,10 @@
 #include <time.h>
 
 #include "alarm.h"
+#include "ltr390mgr.h"
 #include "mqttmgr.h"
-#include "sensor.h"
+#include "sensormgr.h"
+#include "shtc3mgr.h"
 #include "uuid.h"
 #include "wifi_provision.h"
 
@@ -57,9 +59,7 @@ void hardware_init() {
 
   nvs_close(my_handle);
 
-  /* Initialize I2C and sensors */
   i2cdev_init();
-  sensor_init();
 
   /* Set timezone from NVS */
   setenv("TZ", "EST5EDT,M3.2.0/2,M11.1.0", 1);
@@ -98,13 +98,21 @@ void client_init() {
 
   // Initialize component libraries (non-hardware)
   ESP_ERROR_CHECK(mqttmgr_init(PRIVATE_ID));
+}
+
+void sensor_init() {
+  ESP_ERROR_CHECK(sensormgr_init());
   ESP_ERROR_CHECK(alarm_init());
+  ESP_ERROR_CHECK(ltr390mgr_init());
+  ESP_ERROR_CHECK(shtc3mgr_init());
 }
 
 void app_main() {
   hardware_init();
   client_init();
+  sensor_init();
 
   mqttmgr_start();
-  sensor_start();
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  sensormgr_start();
 }

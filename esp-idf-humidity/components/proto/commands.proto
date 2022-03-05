@@ -1,38 +1,16 @@
 syntax = "proto3";
 
-message AlarmAddRequest {
-  string crontab = 1;
-  bool oneshot = 2;
-}
-
-message AlarmAddResponse {
-}
-
-message AlarmDeleteRequest {
-  string crontab = 1;
-}
-
-message AlarmDeleteResponse {
-}
-
-message AlarmListRequest {
-}
-
-message AlarmListResponse {
-  message Alarm {
-    string crontab = 1;
-    bool oneshot = 2;
-    bool enabled = 3;
-  }
-  repeated Alarm alarms = 3;
-}
+import "modules/alarm.proto";
+import "modules/ltr390.proto";
 
 message CommandRequest {
   string uuid = 1;
   oneof cmd {
-    AlarmAddRequest alarm_add_request = 2;
-    AlarmDeleteRequest alarm_delete_request = 3;
-    AlarmListRequest alarm_list_request = 4;
+    alarm.AddRequest alarm_add_request = 2;
+    alarm.DeleteRequest alarm_delete_request = 3;
+    alarm.ListRequest alarm_list_request = 4;
+    ltr390.SetOptionsRequest ltr390_set_options_request = 5;
+    ltr390.GetOptionsRequest ltr390_get_options_request = 6;
   }
 }
 
@@ -45,8 +23,10 @@ message CommandResponse {
   string uuid = 1;
   ret_code_t ret_code = 2;
   oneof resp {
-    AlarmAddResponse alarm_add_response = 3;
-    AlarmDeleteResponse alarm_delete_response = 4;
-    AlarmListResponse alarm_list_response = 5;
+    alarm.AddResponse alarm_add_response = 3;
+    alarm.DeleteResponse alarm_delete_response = 4;
+    alarm.ListResponse alarm_list_response = 5;
+    ltr390.SetOptionsResponse ltr390_set_options_response = 6;
+    ltr390.GetOptionsResponse ltr390_get_options_response = 7;
   }
 }

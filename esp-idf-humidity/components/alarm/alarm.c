@@ -57,12 +57,12 @@ static CommandResponse__RetCodeT alarm_add_cmdhandler(CommandRequest *msg,
 
   resp_out->resp_case = COMMAND_RESPONSE__RESP_ALARM_ADD_RESPONSE;
   *cb = alarm_add_cmdhandler_dealloc_cb;
-  AlarmAddResponse *alr =
-      (AlarmAddResponse *)calloc(1, sizeof(AlarmAddResponse));
-  alarm_add_response__init(alr);
+  Alarm__AddResponse *alr =
+      (Alarm__AddResponse *)calloc(1, sizeof(Alarm__AddResponse));
+  alarm__add_response__init(alr);
   resp_out->alarm_add_response = alr;
 
-  AlarmAddRequest *cmd = msg->alarm_add_request;
+  Alarm__AddRequest *cmd = msg->alarm_add_request;
   ESP_LOGD(TAG, "alarm_add_cmdhandler(%s, %s, oneshot:%s)", msg->uuid,
            cmd->crontab, cmd->oneshot ? "true" : "false");
 
@@ -89,13 +89,13 @@ static CommandResponse__RetCodeT alarm_delete_cmdhandler(
   }
   resp_out->resp_case = COMMAND_RESPONSE__RESP_ALARM_DELETE_RESPONSE;
   *cb = alarm_delete_cmdhandler_dealloc_cb;
-  AlarmDeleteResponse *alr =
-      (AlarmDeleteResponse *)calloc(1, sizeof(AlarmDeleteResponse));
-  alarm_delete_response__init(alr);
+  Alarm__DeleteResponse *alr =
+      (Alarm__DeleteResponse *)calloc(1, sizeof(Alarm__DeleteResponse));
+  alarm__delete_response__init(alr);
   resp_out->alarm_delete_response = alr;
 
   ESP_LOGD(TAG, "alarm_delete_cmdhandler - search");
-  AlarmDeleteRequest *cmd = msg->alarm_delete_request;
+  Alarm__DeleteRequest *cmd = msg->alarm_delete_request;
 
   ESP_LOGD(TAG, "alarm_delete_cmdhandler(%s, %s) - start", msg->uuid,
            cmd->crontab);
@@ -117,7 +117,7 @@ static CommandResponse__RetCodeT alarm_delete_cmdhandler(
 
 static void alarm_list_cmdhandler_dealloc_cb(CommandResponse *resp_out) {
   ESP_LOGD(TAG, "alarm_list_cmdhandler_dealloc_cb - freeing");
-  AlarmListResponse *alr = resp_out->alarm_list_response;
+  Alarm__ListResponse *alr = resp_out->alarm_list_response;
   if (alr->n_alarms > 0) {
     free(alr->alarms);
   }
@@ -154,14 +154,14 @@ static CommandResponse__RetCodeT alarm_list_cmdhandler(
 
   resp_out->resp_case = COMMAND_RESPONSE__RESP_ALARM_LIST_RESPONSE;
   *cb = alarm_list_cmdhandler_dealloc_cb;
-  AlarmListResponse *alr =
-      (AlarmListResponse *)calloc(1, sizeof(AlarmListResponse));
-  alarm_list_response__init(alr);
+  Alarm__ListResponse *alr =
+      (Alarm__ListResponse *)calloc(1, sizeof(Alarm__ListResponse));
+  alarm__list_response__init(alr);
   resp_out->alarm_list_response = alr;
 
   alr->n_alarms = n_alarms;
   if (n_alarms != 0) {
-    alr->alarms = calloc(n_alarms, sizeof(AlarmListResponse__Alarm *));
+    alr->alarms = calloc(n_alarms, sizeof(Alarm__ListResponse__Alarm *));
     for (i = 0; i < n_alarms; i++) {
       alarm_idx = alarm_idx_iter(alarm_idx);
       // We should be getting exactly the right number of idx
@@ -173,8 +173,8 @@ static CommandResponse__RetCodeT alarm_list_cmdhandler(
       ESP_LOGD(TAG, "alarm_list_cmdhandler - Adding alarm in list #%d state#%d",
                i, alarm_idx);
 
-      alr->alarms[i] = calloc(1, sizeof(AlarmListResponse__Alarm));
-      alarm_list_response__alarm__init(alr->alarms[i]);
+      alr->alarms[i] = calloc(1, sizeof(Alarm__ListResponse__Alarm));
+      alarm__list_response__alarm__init(alr->alarms[i]);
       alr->alarms[i]->crontab = state.alarms[alarm_idx].crontab;
       alr->alarms[i]->oneshot = state.alarms[alarm_idx].oneshot;
       alr->alarms[i]->enabled = state.alarms[alarm_idx].enabled == ENABLE_TRUE;

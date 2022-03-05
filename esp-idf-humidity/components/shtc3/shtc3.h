@@ -4,6 +4,9 @@
  * Heavily based on https://github.com/UncleRus/esp-idf-lib examples
  */
 
+#include <sdkconfig.h>
+#if CONFIG_SHTC3_ENABLED
+
 #ifndef ESP_SHTC3_H
 #define ESP_SHTC3_H
 
@@ -54,13 +57,14 @@ esp_err_t shtc3_free_desc(i2c_dev_t *dev);
  * measurements
  *
  * @param dev         Device descriptor
- * @param temperature Temperature in degree Celsius
- * @param humidity    Humidity in percent
+ * @param temperature Output value to store temperature in Celsius
+ * @param humidity    Output value to store humidity in percent
  * @return            `ESP_OK` on success
  */
 esp_err_t shtc3_measure(i2c_dev_t *dev, float *temperature, float *humidity);
 
 #ifdef __cplusplus
 }
+#endif
 #endif
 #endif

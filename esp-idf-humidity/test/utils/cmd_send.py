@@ -6,7 +6,9 @@ import logging
 import uuid
 
 import commands_pb2
+from modules import ltr390_pb2
 from asyncio_mqtt import Client, ProtocolVersion
+
 
 async def comm_stack():
     cmd_req_topic = "6dd576b8-8e70-4c8a-93d8-f2a2b98a4b9f/command/req/"
@@ -32,7 +34,7 @@ async def comm_stack():
         await asyncio.gather(*tasks)
 
 
-async def log_cmd_result(messages, count=5):
+async def log_cmd_result(messages, count=7):
     idx = 0
     async for message in messages:
         idx += 1
@@ -43,7 +45,7 @@ async def log_cmd_result(messages, count=5):
         resp_type = cmd_resp.WhichOneof('resp')
         logging.info('resp parsed: UUID (%s) Ret (%s):(%s)', cmd_resp.uuid, cmd_resp.ret_code, resp_type)
         if resp_type == 'alarm_list_response':
-            logging.info('resp alarms: %s', cmd_resp.alarm_list_response.alarms)
+            logging.info('resp alarms:\n%s', cmd_resp.alarm_list_response.alarms)
         if idx == count:
             return
 
@@ -87,6 +89,25 @@ async def post_cmds(client):
     await client.publish("6dd576b8-8e70-4c8a-93d8-f2a2b98a4b9f/command/req/", payload=cmd.SerializeToString(), qos=2, retain=False)
 
     logging.info('cmds send, exiting post_cmds')
+
+    # GetLtr390 State
+    cmd = commands_pb2.CommandRequest()
+    cmd.uuid =str(uuid.uuid4())
+    cmd.ltr390_get_options_request.SetInParent()
+    logging.info('cmd ltr390 get options: %s', cmd.SerializeToString())
+    await client.publish("6dd576b8-8e70-4c8a-93d8-f2a2b98a4b9f/command/req/", payload=cmd.SerializeToString(), qos=2, retain=False)
+
+    # SetLtr390 Set UV mode
+    cmd = commands_pb2.CommandRequest()
+    cmd.uuid = str(uuid.uuid4())
+    cmd.ltr390_set_options_request.SetInParent()
+    cmd.ltr390_set_options_request.enable = True
+    cmd.ltr390_set_options_request.mode = ltr390_pb2.UVS
+    cmd.ltr390_set_options_request.gain = ltr390_pb2.GAIN_3
+    cmd.ltr390_set_options_request.resolution = ltr390_pb2.RESOLUTION_18BIT
+    cmd.ltr390_set_options_request.measurerate = ltr390_pb2.MEASURE_1000MS
+    logging.info('cmd ltr390 set options: %s', cmd.SerializeToString())
+    await client.publish("6dd576b8-8e70-4c8a-93d8-f2a2b98a4b9f/command/req/", payload=cmd.SerializeToString(), qos=2, retain=False)
 
 
 async def cancel_tasks(tasks):
