@@ -212,6 +212,8 @@ esp_err_t shtc3_measure(i2c_dev_t *dev, float *temperature, float *humidity) {
   ESP_LOGV(TAG, "Read measurement...");
   I2C_DEV_CHECK(dev,
                 i2c_dev_read(dev, NULL, 0, raw_data, sizeof(shtc3_raw_data_t)));
+
+  I2C_DEV_CHECK(dev, shtc3_send_cmd_nolock(dev, SHTC3_SLEEP));
   I2C_DEV_GIVE_MUTEX(dev);
 
   ESP_LOGV(TAG, "Verify measurement...");

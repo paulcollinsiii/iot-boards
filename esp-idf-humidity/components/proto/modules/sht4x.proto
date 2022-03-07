@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package sht4x;
+
+enum mode_t {
+    // Sensor resolution
+    NO_HEATER_HIGH = 0;
+    NO_HEATER_MED = 1;
+    NO_HEATER_LOW = 2;
+
+    // Sensor heater, then read at HIGH res
+    // Any read with the heater, READS ONCE AT THAT MODE
+    // Then resets to HIGH res only to not burn the chip
+    HIGH_HEATER_1S = 3;
+    HIGH_HEATER_100MS = 4;
+    MED_HEATER_1S = 5;
+    MED_HEATER_100MS = 6;
+    LOW_HEATER_1S = 7;
+    LOW_HEATER_100MS = 8;
+}
+
+message SetOptionsRequest {
+  bool enable = 2;
+  mode_t mode = 3;
+}
+
+message SetOptionsResponse {
+  bool enable = 2;
+  mode_t mode = 3;
+}
+
+message GetOptionsRequest {}
+
+message GetOptionsResponse {
+  bool enable = 2;
+  mode_t mode = 3;
+}

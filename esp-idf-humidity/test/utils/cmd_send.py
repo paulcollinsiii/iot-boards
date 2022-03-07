@@ -6,19 +6,20 @@ import logging
 import uuid
 
 import commands_pb2
-from modules import ltr390_pb2
+from modules import ltr390_pb2, sht4x_pb2
 from asyncio_mqtt import Client, ProtocolVersion
 
 
+cmd_req_topic = "command/6dd576b8-8e70-4c8a-93d8-f2a2b98a4b9f/req/"
+cmd_resp_topic = "command/6dd576b8-8e70-4c8a-93d8-f2a2b98a4b9f/resp/"
+
 async def comm_stack():
-    cmd_req_topic = "6dd576b8-8e70-4c8a-93d8-f2a2b98a4b9f/command/req/"
-    cmd_resp_topic = "6dd576b8-8e70-4c8a-93d8-f2a2b98a4b9f/command/resp/"
 
 
     async with contextlib.AsyncExitStack() as stack:
         tasks = set()
         stack.push_async_callback(cancel_tasks, tasks)
-        client = Client('mqtt.kaffi.home', protocol=ProtocolVersion.V311)
+        client = Client('mqtt.iot.kaffi.home', protocol=ProtocolVersion.V311)
         await stack.enter_async_context(client)
 
         manager = client.filtered_messages(cmd_resp_topic)
@@ -34,7 +35,7 @@ async def comm_stack():
         await asyncio.gather(*tasks)
 
 
-async def log_cmd_result(messages, count=7):
+async def log_cmd_result(messages, count=8):
     idx = 0
     async for message in messages:
         idx += 1
@@ -57,7 +58,7 @@ async def post_cmds(client):
     cmd.alarm_add_request.crontab = '*/15 * * * * *'
     cmd.alarm_add_request.oneshot = True
     logging.info('cmd add_alarm: %s', cmd.SerializeToString())
-    await client.publish("6dd576b8-8e70-4c8a-93d8-f2a2b98a4b9f/command/req/", payload=cmd.SerializeToString(), qos=2, retain=False)
+    await client.publish(cmd_req_topic, payload=cmd.SerializeToString(), qos=2, retain=False)
 
     # Create a test alarm
     cmd = commands_pb2.CommandRequest()
@@ -65,28 +66,28 @@ async def post_cmds(client):
     cmd.alarm_add_request.crontab = '*/30 * * * * *'
     cmd.alarm_add_request.oneshot = True
     logging.info('cmd add_alarm: %s', cmd.SerializeToString())
-    await client.publish("6dd576b8-8e70-4c8a-93d8-f2a2b98a4b9f/command/req/", payload=cmd.SerializeToString(), qos=2, retain=False)
+    await client.publish(cmd_req_topic, payload=cmd.SerializeToString(), qos=2, retain=False)
 
     # List the alarms
     cmd = commands_pb2.CommandRequest()
     cmd.uuid = str(uuid.uuid4())
     cmd.alarm_list_request.SetInParent()
     logging.info('cmd list_alarms: %s', cmd.SerializeToString())
-    await client.publish("6dd576b8-8e70-4c8a-93d8-f2a2b98a4b9f/command/req/", payload=cmd.SerializeToString(), qos=2, retain=False)
+    await client.publish(cmd_req_topic, payload=cmd.SerializeToString(), qos=2, retain=False)
 
     # Delete the created alarm
     cmd = commands_pb2.CommandRequest()
     cmd.uuid = str(uuid.uuid4())
     cmd.alarm_delete_request.crontab = '*/15 * * * * *'
     logging.info('cmd delete_alarm: %s', cmd.SerializeToString())
-    await client.publish("6dd576b8-8e70-4c8a-93d8-f2a2b98a4b9f/command/req/", payload=cmd.SerializeToString(), qos=2, retain=False)
+    await client.publish(cmd_req_topic, payload=cmd.SerializeToString(), qos=2, retain=False)
 
     # List the alarms
     cmd = commands_pb2.CommandRequest()
     cmd.uuid = str(uuid.uuid4())
     cmd.alarm_list_request.SetInParent()
     logging.info('cmd list_alarms: %s', cmd.SerializeToString())
-    await client.publish("6dd576b8-8e70-4c8a-93d8-f2a2b98a4b9f/command/req/", payload=cmd.SerializeToString(), qos=2, retain=False)
+    await client.publish(cmd_req_topic, payload=cmd.SerializeToString(), qos=2, retain=False)
 
     logging.info('cmds send, exiting post_cmds')
 
@@ -95,7 +96,7 @@ async def post_cmds(client):
     cmd.uuid =str(uuid.uuid4())
     cmd.ltr390_get_options_request.SetInParent()
     logging.info('cmd ltr390 get options: %s', cmd.SerializeToString())
-    await client.publish("6dd576b8-8e70-4c8a-93d8-f2a2b98a4b9f/command/req/", payload=cmd.SerializeToString(), qos=2, retain=False)
+    await client.publish(cmd_req_topic, payload=cmd.SerializeToString(), qos=2, retain=False)
 
     # SetLtr390 Set UV mode
     cmd = commands_pb2.CommandRequest()
@@ -107,7 +108,16 @@ async def post_cmds(client):
     cmd.ltr390_set_options_request.resolution = ltr390_pb2.RESOLUTION_18BIT
     cmd.ltr390_set_options_request.measurerate = ltr390_pb2.MEASURE_1000MS
     logging.info('cmd ltr390 set options: %s', cmd.SerializeToString())
-    await client.publish("6dd576b8-8e70-4c8a-93d8-f2a2b98a4b9f/command/req/", payload=cmd.SerializeToString(), qos=2, retain=False)
+    await client.publish(cmd_req_topic, payload=cmd.SerializeToString(), qos=2, retain=False)
+
+    # Disable SHT4x
+    cmd = commands_pb2.CommandRequest()
+    cmd.uuid = str(uuid.uuid4())
+    cmd.sht4x_set_options_request.SetInParent()
+    cmd.sht4x_set_options_request.enable = False
+    cmd.sht4x_set_options_request.mode = sht4x_pb2.NO_HEATER_HIGH
+    logging.info('cmd sht4x set options: %s', cmd.SerializeToString())
+    await client.publish(cmd_req_topic, payload=cmd.SerializeToString(), qos=2, retain=False)
 
 
 async def cancel_tasks(tasks):

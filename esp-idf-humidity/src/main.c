@@ -6,6 +6,7 @@
 #include <freertos/task.h>
 #include <i2cdev.h>
 #include <nvs_flash.h>
+#include <sdkconfig.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -14,6 +15,7 @@
 #include "ltr390mgr.h"
 #include "mqttmgr.h"
 #include "sensormgr.h"
+#include "sht4xmgr.h"
 #include "shtc3mgr.h"
 #include "uuid.h"
 #include "wifi_provision.h"
@@ -103,8 +105,15 @@ void client_init() {
 void sensor_init() {
   ESP_ERROR_CHECK(sensormgr_init());
   ESP_ERROR_CHECK(alarm_init());
+#if CONFIG_LTR390_ENABLED
   ESP_ERROR_CHECK(ltr390mgr_init());
+#endif
+#if CONFIG_SHTC3_ENABLED
   ESP_ERROR_CHECK(shtc3mgr_init());
+#endif
+#if CONFIG_SHT4X_ENABLED
+  ESP_ERROR_CHECK(sht4xmgr_init());
+#endif
 }
 
 void app_main() {
