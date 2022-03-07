@@ -132,6 +132,31 @@ static esp_err_t sht4x_read_res_nolock(i2c_dev_t *dev, uint8_t res[]) {
   return ESP_OK;
 }
 
+const char *sht4x_mode_to_str(Sht4x__ModeT mode) {
+  switch (mode) {
+    case SHT4X__MODE_T__HIGH_HEATER_1S:
+      return "SHT4X__MODE_T__HIGH_HEATER_1S";
+    case SHT4X__MODE_T__MED_HEATER_1S:
+      return "SHT4X__MODE_T__MED_HEATER_1S";
+    case SHT4X__MODE_T__LOW_HEATER_1S:
+      return "SHT4X__MODE_T__LOW_HEATER_1S";
+    case SHT4X__MODE_T__HIGH_HEATER_100MS:
+      return "SHT4X__MODE_T__HIGH_HEATER_100MS";
+    case SHT4X__MODE_T__MED_HEATER_100MS:
+      return "SHT4X__MODE_T__MED_HEATER_100MS";
+    case SHT4X__MODE_T__LOW_HEATER_100MS:
+      return "SHT4X__MODE_T__LOW_HEATER_100MS";
+    case SHT4X__MODE_T__NO_HEATER_HIGH:
+      return "SHT4X__MODE_T__NO_HEATER_HIGH";
+    case SHT4X__MODE_T__NO_HEATER_MED:
+      return "SHT4X__MODE_T__NO_HEATER_MED";
+    case SHT4X__MODE_T__NO_HEATER_LOW:
+      return "SHT4X__MODE_T__NO_HEATER_LOW";
+    default:
+      return "UNKNOW MODE";
+  }
+}
+
 esp_err_t sht4x_free_desc(i2c_dev_t *dev) {
   if (!dev) {
     return ESP_ERR_INVALID_ARG;

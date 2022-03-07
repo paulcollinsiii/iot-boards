@@ -66,6 +66,14 @@ esp_err_t sht4x_free_desc(i2c_dev_t *dev);
 esp_err_t sht4x_measure(i2c_dev_t *dev, Sht4x__ModeT mode, float *temperature,
                         float *humidity);
 
+/**
+ * @brief Mode to string
+ *
+ * @param mode
+ * @return const char* String description of mode
+ */
+const char *sht4x_mode_to_str(Sht4x__ModeT mode);
+
 #ifdef __cplusplus
 }
 #endif
