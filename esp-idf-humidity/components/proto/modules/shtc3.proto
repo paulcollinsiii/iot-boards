@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package shtc3;
+
+message SetOptionsRequest {
+  bool enable = 2;
+}
+
+message SetOptionsResponse {
+  bool enable = 2;
+}
+
+message GetOptionsRequest {}
+
+message GetOptionsResponse {
+  bool enable = 2;
+}
