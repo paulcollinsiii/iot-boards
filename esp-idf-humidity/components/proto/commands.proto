@@ -2,6 +2,7 @@ syntax = "proto3";
 
 import "modules/alarm.proto";
 import "modules/ltr390.proto";
+import "modules/sht4x.proto";
 
 message CommandRequest {
   string uuid = 1;
@@ -11,6 +12,8 @@ message CommandRequest {
     alarm.ListRequest alarm_list_request = 4;
     ltr390.SetOptionsRequest ltr390_set_options_request = 5;
     ltr390.GetOptionsRequest ltr390_get_options_request = 6;
+    sht4x.SetOptionsRequest sht4x_set_options_request = 7;
+    sht4x.GetOptionsRequest sht4x_get_options_request = 8;
   }
 }
 
@@ -28,5 +31,7 @@ message CommandResponse {
     alarm.ListResponse alarm_list_response = 5;
     ltr390.SetOptionsResponse ltr390_set_options_response = 6;
     ltr390.GetOptionsResponse ltr390_get_options_response = 7;
+    sht4x.SetOptionsResponse sht4x_set_options_response = 8;
+    sht4x.GetOptionsResponse sht4x_get_options_response = 9;
   }
 }

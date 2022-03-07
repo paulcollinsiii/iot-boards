@@ -1,0 +1,25 @@
+menu "SHT4X"
+
+config SHT4X_ENABLED
+  bool "Enable SHT4X"
+  default n
+
+config SHT4X_GPIO_SDA
+  depends on SHT4X_ENABLED
+  int "GPIO for SDA"
+  default 23
+  range 1 43
+
+config SHT4X_GPIO_SCL
+  depends on SHT4X_ENABLED
+  int "GPIO for SCL"
+  default 22
+  range 1 43
+
+config SHT4X_I2C_PORTNUM
+  depends on SHT4X_ENABLED
+  int "I2C Port Number"
+  default 0
+  range 0 1
+
+endmenu
