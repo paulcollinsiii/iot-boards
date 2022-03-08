@@ -13,7 +13,7 @@ experience.
 #### Sensors
 * [Adafruit SHTC3](https://www.adafruit.com/product/4636)
 * [Adafruit SHT4X](https://www.adafruit.com/product/4885)
-* [Adafruit LTR390](https://www.adafruit.com/product/4831) (Not yet enabled, I'll get there)
+* [Adafruit LTR390](https://www.adafruit.com/product/4831)
 
 
 ## Setting up
@@ -24,12 +24,21 @@ Tools used:
   * Poetry
 * Vagrant - For running a local Kubernetes "cluster"
 * k0sctl - Kubernetes cluster setup automation
-* protobuf-compiler & protobuf-c-compiler
+* protobuf-compiler & [protobuf-c-compiler](https://github.com/protobuf-c/protobuf-c)
+
+
+Running `pio run -t menuconfig` is needed to set several defaults depending on the board you're using.
+Look in the `Components` section and read through the options, but in particular
+
+* Set the board memory sizes
+* Enable the sensors your attaching for the particular build, and the pins I2C
+  is connected to
+* Set the partitions to custom, and which csv to use
 
 
 ## Handy Commands
 
-Build the
+Build with
 `pio run -t upload && pio device monitor --raw`
 
 Or you can do it through vscode

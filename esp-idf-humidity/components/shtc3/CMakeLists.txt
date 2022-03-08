@@ -4,5 +4,5 @@
 idf_component_register(
   SRCS "shtc3.c" "shtc3mgr.c"
   INCLUDE_DIRS .
-  REQUIRES "i2cdev" "sensormgr"
+  REQUIRES "proto" "json" "i2cdev" "sensormgr"
 )

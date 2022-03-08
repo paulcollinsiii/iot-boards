@@ -1,7 +1,6 @@
 #ifndef MQTT_MGR_H
 #define MQTT_MGR_H
 
-#include <cJSON.h>
 #include <commands.pb-c.h>
 #include <esp_event.h>
 #include <freertos/FreeRTOS.h>
@@ -10,19 +9,25 @@
 
 #define MQTTMGR_CLIENT_STARTED_BIT (1 << 0)
 #define MQTTMGR_CLIENT_CONNECTED_BIT (1 << 1)
+
 // This is set if the system is NOT currently connected to MQTT
 // THIS IS DIFFERENT FROM DISCONNECTED!
 #define MQTTMGR_CLIENT_NOTCONNECTED_BIT (1 << 2)
+
 // MQTT was disconnected from the server. THIS SHOULD NOT BE USED FOR TESTING
 // IF THE SYSTEM IS CONNECTED. It's a measurement of if the MQTT subsystem
 // received a disconnection event
 #define MQTTMGR_CLIENT_DISCONNECTED_BIT (1 << 3)
+
 // Ring buffer has enough data to send via mqtt
 #define SENSORMGR_LOWWATER_BIT (1 << 4)
+
 // Ring buffer is getting full and should be drained to file or mqtt
 #define SENSORMGR_HIGHWATER_BIT (1 << 5)
+
 // File is done writing and can be read safely
 #define SENSORMGR_DONEWRITING_BIT (1 << 6)
+
 // Sensor reading can continue till buffers are completely full
 #define SENSORMGR_POLLSENSORS_BIT (1 << 7)
 
@@ -56,20 +61,6 @@ typedef void(dealloc_cb_fn)(CommandResponse *resp_out);
 typedef CommandResponse__RetCodeT(cmdhandler)(CommandRequest *message,
                                               CommandResponse *resp_out,
                                               dealloc_cb_fn **dealloc_cb_out);
-typedef esp_err_t(jsonhandler)(cJSON *);
-/**
- * @brief Register an handler to append JSON to messages
- *
- * Tasks that register a handler are expected to maintain their own Ringbuffer
- * of messages and the JSON generator will drain that buffer of some number (or
- * all) messages when called. External tasks need to notify mqtt of pending
- * messages by calling xTaskNotifyGive(mqtt_task_handle);
- *
- * @return
- *  - ESP_OK: Success
- *  - ESP_FAIL: Failed to add handler
- */
-esp_err_t mqttmgr_register_sensor_encoder(esp_err_t (*fn)(cJSON *));
 
 /**
  * @brief Register command handler for received commands
@@ -120,10 +111,12 @@ esp_err_t mqttmgr_stop();
  * The msg includes the size of the message to be sent and a pointer to the data
  * to send After successful sending of the msg, the pointer will be free'd
  *
+ * @param msg   Message to enqueue
+ * @param delay Message Enqueue timeout
  * @return
  *  - ESP_OK: Success
  *  - ESP_FAIL: Failed to data queue
  */
-esp_err_t mqttmgr_queuemsg(mqttmgr_msg_t *msg);
+esp_err_t mqttmgr_queuemsg(mqttmgr_msg_t *msg, TickType_t delay);
 
 #endif

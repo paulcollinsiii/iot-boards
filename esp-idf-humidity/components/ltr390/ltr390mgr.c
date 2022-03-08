@@ -32,11 +32,8 @@ static esp_err_t ltr390mgr_measure(void **sensor_data_out, size_t *len) {
 
   ESP_LOGD(TAG, "measure...");
   time(&sensor_reading.timestamp);
-  // TODO: Retry on failure?
   res = ltr390_measure(&state.dev, &sensor_reading.measurement,
                        &sensor_reading.mode);
-  // Toggle the sensor mode between readings
-  ltr390_set_mode(&state.dev, !sensor_reading.mode);
   if (res != ESP_OK) {
     if (res != ESP_ERR_INVALID_STATE) {  // AKA Sensor not in standby
       ESP_LOGW(TAG, "measure - failed: %s", esp_err_to_name(res));
@@ -46,6 +43,8 @@ static esp_err_t ltr390mgr_measure(void **sensor_data_out, size_t *len) {
     return res;  // Don't attempt to add a bad reading to ring buffer
   }
 
+  // Toggle the sensor mode between successful readings
+  ltr390_set_mode(&state.dev, !sensor_reading.mode);
   ESP_LOGV(TAG, "measure - done");
 
   *sdo = &sensor_reading;
@@ -140,7 +139,6 @@ static CommandResponse__RetCodeT ltr390mgr_cmd_get_optionshandler(
 }
 
 esp_err_t ltr390mgr_init() {
-  // TODO: These need to be part of KCONFIG for this module
   ESP_LOGI(TAG, "Init hardware");
   ltr390_init_desc(&state.dev, CONFIG_LTR390_I2C_PORTNUM,
                    (gpio_num_t)CONFIG_LTR390_GPIO_SDA,

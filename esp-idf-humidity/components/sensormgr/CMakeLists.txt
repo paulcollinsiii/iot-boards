@@ -4,5 +4,5 @@
 idf_component_register(
   SRCS "sensormgr.c"
   INCLUDE_DIRS .
-  REQUIRES "mqttmgr" "fatfs"
+  REQUIRES "json" "mqttmgr" "fatfs"
 )

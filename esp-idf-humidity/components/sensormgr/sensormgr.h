@@ -1,7 +1,3 @@
-/*
- * ESP-IDF LTR390 Sensor Managment Package
- */
-
 #ifndef SENSORMGR_H
 #define SENSORMGR_H
 
@@ -15,15 +11,6 @@ extern "C" {
 
 typedef esp_err_t(measure_fn)(void **sensor_data_out, size_t *len);
 typedef esp_err_t(marshall_fn)(void *sensor_data, cJSON *data_array);
-
-typedef struct {
-  char *topic;  // Expected to be a format string entry so that device-id can be
-                // put in
-  char *discovery;  // JSON structure for Home Assistant to auto-discover
-} sensormgr_registration_discovery_t;  // TODO: This needs a function to
-                                       // register discovery messages, can
-                                       // accept a varidict num of these structs
-                                       // to publish
 
 typedef struct {
   measure_fn *measure;

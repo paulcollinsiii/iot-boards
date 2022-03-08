@@ -199,7 +199,6 @@ esp_err_t shtc3_measure(i2c_dev_t *dev, float *temperature, float *humidity) {
   shtc3_raw_data_t raw_data;
 
   // Wake --> wait --> Measure --> delay --> read --> sleep
-  // TODO: Bug here, take mutex doesn't throw / retry
   I2C_DEV_TAKE_MUTEX(dev);
   ESP_LOGV(TAG, "Wakeup device");
   I2C_DEV_CHECK(dev, shtc3_send_cmd_nolock(dev, SHTC3_WAKEUP));

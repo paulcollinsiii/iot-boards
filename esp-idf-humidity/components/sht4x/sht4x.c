@@ -184,9 +184,6 @@ esp_err_t sht4x_init(i2c_dev_t *dev) {
     return ESP_ERR_INVALID_CRC;
   }
 
-  // TODO: Left off on getting the testing setup for checking the serial number
-  // Next steps are getting the manager configured to start the sensor and the
-  // log some debugging before getting the rest of the temp & humidity data out
   id = data[0];
   id <<= 8;
   id |= data[1];
