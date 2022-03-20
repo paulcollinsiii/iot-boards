@@ -1,5 +1,6 @@
 #include <esp_event.h>
 #include <esp_log.h>
+#include <esp_pm.h>
 #include <esp_sntp.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
@@ -13,6 +14,7 @@
 
 #include "alarm.h"
 #include "ltr390mgr.h"
+#include "mqttlog.h"
 #include "mqttmgr.h"
 #include "sensormgr.h"
 #include "sht4xmgr.h"
@@ -66,6 +68,16 @@ void hardware_init() {
   /* Set timezone from NVS */
   setenv("TZ", "EST5EDT,M3.2.0/2,M11.1.0", 1);
   tzset();
+
+  /* Setup power mgmt */
+#if CONFIG_IDF_TARGET_ESP32
+  esp_pm_config_esp32_t pm_config = {
+      .light_sleep_enable = true, .max_freq_mhz = 240, .min_freq_mhz = 80};
+#elif CONFIG_IDF_TARGET_ESP32S2
+  esp_pm_config_esp32s2_t pm_config = {
+      .light_sleep_enable = true, .max_freq_mhz = 240, .min_freq_mhz = 80};
+#endif
+  esp_pm_configure(&pm_config);
 }
 
 void client_init() {
@@ -100,6 +112,7 @@ void client_init() {
 
   // Initialize component libraries (non-hardware)
   ESP_ERROR_CHECK(mqttmgr_init(PRIVATE_ID));
+  ESP_ERROR_CHECK(mqttlog_init());
 }
 
 void sensor_init() {
@@ -124,4 +137,5 @@ void app_main() {
   mqttmgr_start();
   vTaskDelay(1000 / portTICK_PERIOD_MS);
   sensormgr_start();
+  MQTTLOG_LOGI(TAG, "test message", "");
 }

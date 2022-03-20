@@ -93,7 +93,6 @@ static esp_err_t shtc3mgr_measure(void **sensor_data_out, size_t *len) {
 
   ESP_LOGD(TAG, "measure...");
   time(&sensor_reading.timestamp);
-  // TODO: Read data from sensor
   res =
       shtc3_measure(&state.dev, &sensor_reading.temp, &sensor_reading.humidity);
 
@@ -135,7 +134,6 @@ static esp_err_t shtc3mgr_serialize_data(void *sensor_data, cJSON *data_array) {
 }
 
 esp_err_t shtc3mgr_init() {
-  // TODO: These need to be part of KCONFIG for this module
   ESP_LOGI(TAG, "Init hardware");
 
   state.enabled = true;

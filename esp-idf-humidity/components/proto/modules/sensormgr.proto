@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package sensormgr;
+
+message GetStatsRequest {}
+message GetStatsResponse {
+    // Will respond with stats directly as well as trigger a mqtt_log message
+    uint64 uptime_microsec = 2;
+    uint32 disk_free_kb = 3;
+    uint32 disk_total_kb = 4;
+    bool ringbuffer_low_water = 5;
+    bool ringbuffer_high_water = 6;
+    bool disk_high_water = 7;
+}

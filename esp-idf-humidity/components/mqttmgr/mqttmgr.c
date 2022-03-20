@@ -2,6 +2,7 @@
 
 #include <backoff_algorithm.h>
 #include <esp_log.h>
+#include <esp_wifi.h>
 #include <freertos/queue.h>
 #include <mqtt_client.h>
 
@@ -20,7 +21,7 @@ char topic_names[4][64];
 
 static BackoffAlgorithmContext_t retryParams;
 
-typedef struct {
+typedef struct _mqttmgr_state_t {
   TaskHandle_t mqtt_client_watcher_handle;
   TaskHandle_t mqtt_task_handle;
   QueueHandle_t msg_queue;
@@ -31,7 +32,6 @@ typedef struct {
   uint8_t cmd_handler_cnt;
   esp_mqtt_client_handle_t client;
   cmdhandler **cmd_handlers;
-  jsonhandler *json_handlers[MQTT_HANDLERS_MAX];
 } mqttmgr_state_t;
 
 static mqttmgr_state_t state;
@@ -96,6 +96,10 @@ loop_exit:
     ESP_LOGE(TAG, "mqttmgr_cmd_dispatch - publishing failed!");
   }
 
+  // TODO: This dealloc callback is a silly complexity that should be dropped
+  // Command handlers should return the packed reponse buffer only, so they can
+  // alloc build and free the msg completely in the call. That leave the mqtt
+  // manager to just forward the msg response itself
   if (dealloc_cb != NULL) {
     ESP_LOGI(TAG, "mqttmgr_cmd_dispatch - dealloc_cb start");
     dealloc_cb(&resp);
@@ -187,12 +191,16 @@ static void mqttmgr_client_watcher(void *pvParam) {
       ESP_LOGI(TAG, "Too many mqtt disconnections, backing off for %d seconds",
                nextRetryBackoff);
       esp_mqtt_client_stop(state.client);
+      // TODO: Handle the Wifi radio elsewhere?
+      esp_wifi_disconnect();
+      esp_wifi_stop();
       xEventGroupClearBits(mqttmgr_events, MQTTMGR_CLIENT_STARTED_BIT |
                                                MQTTMGR_CLIENT_CONNECTED_BIT);
 
       vTaskDelay((nextRetryBackoff * 1000) / portTICK_PERIOD_MS);
-
       ESP_LOGI(TAG, "attempting to connect to mqtt again...");
+      esp_wifi_start();
+      vTaskDelay(5000 / portTICK_PERIOD_MS);  // 5 seconds to connect WiFi
       esp_mqtt_client_start(state.client);
       xEventGroupSetBits(mqttmgr_events, MQTTMGR_CLIENT_STARTED_BIT);
       disconn_event_count = 0;
@@ -203,9 +211,15 @@ static void mqttmgr_client_watcher(void *pvParam) {
 /**
  * @brief Task for sending sensor data
  */
-static void mqttmgr_msgqueue_task(void *pvParam) {
-  int res;
+static void mqttmgr_task_msgqueue(void *pvParam) {
+  bool resetBackoff = false;
   mqttmgr_msg_t msg_buffer;
+  uint16_t nextRetryBackoff = 0;
+  BackoffAlgorithmContext_t mqttRetryParams;
+
+  BackoffAlgorithm_InitializeParams(&mqttRetryParams, MQTT_BASE_BACKOFF_SEC,
+                                    MQTT_MAX_BACKOFF,
+                                    BACKOFF_ALGORITHM_RETRY_FOREVER);
 
   ESP_LOGD(TAG, "mqtt task entering loop");
   for (;;) {
@@ -222,14 +236,24 @@ static void mqttmgr_msgqueue_task(void *pvParam) {
         portMAX_DELAY);
     ESP_LOGD(TAG, "publishing message to topic: %s",
              topic_names[msg_buffer.topic]);
-    res = esp_mqtt_client_publish(state.client, topic_names[msg_buffer.topic],
-                                  msg_buffer.msg, msg_buffer.len,
-                                  1,  // QoS 1
-                                  1   // Retain as the last msg from this device
-    );
-    if (res == -1) {
+    // Retry publishing the msg on failures with expo backoff
+    while (-1 == esp_mqtt_client_publish(
+                     state.client, topic_names[msg_buffer.topic],
+                     msg_buffer.msg, msg_buffer.len,
+                     1,  // QoS 1
+                     1   // Retain as the last msg from this device
+                     )) {
       ESP_LOGE(TAG, "Failed to enqueue mqtt message!");
-      // TODO: Should this put the message back on the queue?
+      BackoffAlgorithm_GetNextBackoff(&mqttRetryParams, esp_random(),
+                                      &nextRetryBackoff);
+      resetBackoff = true;
+      vTaskDelay((nextRetryBackoff * 1000) / portTICK_PERIOD_MS);
+    }
+    if (resetBackoff) {
+      BackoffAlgorithm_InitializeParams(&mqttRetryParams, MQTT_BASE_BACKOFF_SEC,
+                                        MQTT_MAX_BACKOFF,
+                                        BACKOFF_ALGORITHM_RETRY_FOREVER);
+      resetBackoff = false;
     }
     free(msg_buffer.msg);
   }
@@ -276,21 +300,10 @@ esp_err_t mqttmgr_init(char *device_id) {
   return ESP_OK;
 }
 
-esp_err_t mqttmgr_register_sensor_encoder(esp_err_t (*fn)(cJSON *)) {
-  if (state.json_handler_cnt >= MQTT_HANDLERS_MAX) {
-    ESP_LOGE(TAG, "Max number of json handlers registered: %d",
-             MQTT_HANDLERS_MAX);
-    return ESP_FAIL;
-  }
-  state.json_handlers[state.json_handler_cnt++] = fn;
-  ESP_LOGD(TAG, "Registered event handler");
-  return ESP_OK;
-}
-
 esp_err_t mqttmgr_start() {
   BaseType_t result;
   result =
-      xTaskCreate(mqttmgr_msgqueue_task, MQTT_TASK_NAME, MQTT_TASK_STACKSIZE,
+      xTaskCreate(mqttmgr_task_msgqueue, MQTT_TASK_NAME, MQTT_TASK_STACKSIZE,
                   (void *)1, tskIDLE_PRIORITY, &state.mqtt_task_handle);
   if (result != pdPASS) {
     ESP_LOGE(TAG, "Error starting mqtt task!");
@@ -329,7 +342,7 @@ esp_err_t mqttmgr_stop() {
   return ESP_OK;
 }
 
-esp_err_t mqttmgr_queuemsg(mqttmgr_msg_t *msg) {
+esp_err_t mqttmgr_queuemsg(mqttmgr_msg_t *msg, TickType_t delay) {
   if (state.mqtt_task_handle == NULL) {
     return ESP_ERR_INVALID_STATE;
   }

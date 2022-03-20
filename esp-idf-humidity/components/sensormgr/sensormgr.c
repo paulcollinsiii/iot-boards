@@ -1,21 +1,23 @@
 #include "sensormgr.h"
 
+#include <commands.pb-c.h>
 #include <esp_err.h>
 #include <esp_log.h>
 #include <esp_vfs.h>
 #include <esp_vfs_fat.h>
 #include <freertos/ringbuf.h>
 #include <freertos/task.h>
+#include <mqttlog.h>
 #include <mqttmgr.h>
 #include <stdatomic.h>
 #include <string.h>
 
 // TODO: Convert this to an actual kconfig value
-#define CONFIG_SENSOR_COUNT 2
+#define CONFIG_SENSOR_COUNT 4
 
-#define SENSORMGR_MEASURETASK_NAME "sensormgr"
-#define SENSORMGR_QUEUETASK_NAME "sensormgr-q"
-#define SENSORMGR_FILEWRITERTASK_NAME "sensormgr-fw"
+#define SENSORMGR_TASKNAME_READ "sensormgr"
+#define SENSORMGR_TASKNAME_QUEUE "sensormgr-q"
+#define SENSORMGR_TASKNAME_FILEWRITER "sensormgr-fw"
 #define SENSORMGR_TASK_STACKSIZE 4 * 1024
 #define SENSORMGR_RINBUFFER_SIZE CONFIG_SENSORMGR_RINGBUF_SIZE * 1024
 // Ringbuffer free space is by max item size that can be sent in
@@ -27,9 +29,10 @@
 // 128K left on FS means stop writing for now
 #define SENSORMGR_FS_HIGHWATER 128
 
-typedef struct {
+typedef struct _state_t {
   bool initilized;
   uint8_t sensor_cnt;
+  uint8_t LOWWATER_ITEM_CNT;
   sensormgr_registration_t sensors[CONFIG_SENSOR_COUNT];
   TaskHandle_t measure_task_handle, queue_task_handle, filewriter_task_handle;
   RingbufHandle_t ring_buffer;
@@ -38,7 +41,7 @@ typedef struct {
   atomic_bool has_files;  // Are there files that need to be drained?
 } state_t;
 
-typedef struct {
+typedef struct _sensor_reading_t {
   uint8_t type_idx;
   size_t sensor_data_len;
   uint8_t sensor_data[];
@@ -59,7 +62,7 @@ typedef struct sensor_iterator_t {
   size_t reading_size;
 } sensor_iterator_t;
 
-static const char *TAG = SENSORMGR_MEASURETASK_NAME;
+static const char *TAG = SENSORMGR_TASKNAME_READ;
 static state_t state;
 
 // Pre-declare my static functions
@@ -68,9 +71,65 @@ static esp_err_t sensormgr_get_first_datafile(FILE **fp, char *f_name,
 static esp_err_t sensormgr_read_iter(sensor_iterator_t *iter_state,
                                      bool read_files);
 static uint32_t sensormgr_free_space();
-static void sensormgr_file_writer_task(void *pvParam);
-static void sensormgr_queuesend_task(void *pvParam);
-static void sensormgr_sensorread_task(void *pvParam);
+static void sensormgr_task_file_writer(void *pvParam);
+static void sensormgr_get_free_space(uint32_t *fre_kb, uint32_t *tot_kb);
+static void sensormgr_log_free_space();
+static void sensormgr_task_queuesend(void *pvParam);
+static void sensormgr_task_sensorread(void *pvParam);
+
+static esp_err_t sensormgr_get_stats(Sensormgr__GetStatsResponse *stats) {
+  EventBits_t curr_events = xEventGroupGetBits(mqttmgr_events);
+  stats->uptime_microsec = esp_timer_get_time();
+  sensormgr_get_free_space(&stats->disk_free_kb, &stats->disk_total_kb);
+  stats->ringbuffer_low_water = curr_events & SENSORMGR_LOWWATER_BIT;
+  stats->ringbuffer_high_water = curr_events & SENSORMGR_HIGHWATER_BIT;
+  stats->disk_high_water = stats->disk_free_kb < SENSORMGR_FS_HIGHWATER;
+
+  return ESP_OK;
+}
+
+static void sensormgr_log_stats() {
+  Sensormgr__GetStatsResponse local;
+  const uint64_t q = 1000, s = 60;
+  char uptime[64];
+
+  sensormgr_get_stats(&local);
+
+  snprintf(uptime, 64, "%02llu:%02llu:%02llu.%03llu",
+           local.uptime_microsec / s / s / q / q,
+           local.uptime_microsec / s / q / q % s,
+           local.uptime_microsec / q / q % s, local.uptime_microsec / q % q);
+
+  MQTTLOG_LOGI(
+      TAG, "current stats",
+      "disk_free_kb=%u disk_total_size=%u low_water=%b high_water=%b uptime=%s",
+      local.disk_free_kb, local.disk_total_kb, local.ringbuffer_low_water,
+      local.ringbuffer_high_water, uptime);
+}
+
+static void sensormgrmgr_cmd_get_stats_dealloc_cb(CommandResponse *resp_out) {
+  ESP_LOGD(TAG, "sensormgrmgmt_cmd_set_options_dealloc_cb - freeing");
+  free(resp_out->sensormgr_get_stats_response);
+}
+
+static CommandResponse__RetCodeT sensormgrmgr_cmd_get_stats(
+    CommandRequest *msg, CommandResponse *resp_out, dealloc_cb_fn **cb) {
+  if (msg->cmd_case != COMMAND_REQUEST__CMD_SENSORMGR_GET_STATS_REQUEST) {
+    return COMMAND_RESPONSE__RET_CODE_T__NOTMINE;
+  }
+
+  resp_out->resp_case = COMMAND_RESPONSE__RESP_SENSORMGR_GET_STATS_RESPONSE;
+  *cb = sensormgrmgr_cmd_get_stats_dealloc_cb;
+  Sensormgr__GetStatsResponse *cmd_resp = (Sensormgr__GetStatsResponse *)calloc(
+      1, sizeof(Sensormgr__GetStatsResponse));
+  sensormgr__get_stats_response__init(cmd_resp);
+  resp_out->sensormgr_get_stats_response = cmd_resp;
+
+  sensormgr_get_stats(cmd_resp);
+  sensormgr_log_stats();  // TODO: Enh, duplicate work T-T
+
+  return COMMAND_RESPONSE__RET_CODE_T__HANDLED;
+}
 
 static esp_err_t sensormgr_read_iter(sensor_iterator_t *iter_state,
                                      bool read_files) {
@@ -132,6 +191,7 @@ static esp_err_t sensormgr_read_iter(sensor_iterator_t *iter_state,
           iter_state->reading = NULL;
           iter_state->f_name[0] = '\0';
           iter_state->state = HFNO;
+          sensormgr_log_free_space();
           break;
         }
         // Sanity check sensor reading to prevent overflow
@@ -187,18 +247,24 @@ static esp_err_t sensormgr_read_iter(sensor_iterator_t *iter_state,
   }
 }
 
-static uint32_t sensormgr_free_space() {
+static void sensormgr_get_free_space(uint32_t *fre_kb, uint32_t *tot_kb) {
   FATFS *fs;
+  f_getfree("0:", fre_kb, &fs);
+  *tot_kb = ((fs->n_fatent - 2) * fs->csize * fs->ssize) / 1024;
+  *fre_kb = (*fre_kb * fs->csize * fs->ssize) / 1024;
+}
+
+static uint32_t sensormgr_free_space() {
   uint32_t fre_kb, tot_kb;
-
-  f_getfree("0:", &fre_kb, &fs);
-  tot_kb = ((fs->n_fatent - 2) * fs->csize * fs->ssize) / 1024;
-  fre_kb = (fre_kb * fs->csize * fs->ssize) / 1024;
-
-  /* Print the free space (assuming 512 bytes/sector) */
-  ESP_LOGI(TAG, "%10u KiB total drive space.\n\t%10u KiB available.", tot_kb,
-           fre_kb);
+  sensormgr_get_free_space(&fre_kb, &tot_kb);
   return fre_kb;
+}
+
+static void sensormgr_log_free_space() {
+  uint32_t fre_kb, tot_kb;
+  sensormgr_get_free_space(&fre_kb, &tot_kb);
+  /* Print the free space (assuming 512 bytes/sector) */
+  ESP_LOGI(TAG, "%5u / %5u KiB free / total drive space.", fre_kb, tot_kb);
 }
 
 /**
@@ -232,7 +298,7 @@ static esp_err_t sensormgr_get_first_datafile(FILE **fp, char *f_name,
 
 // At highwater and disconnected, buffer to file
 
-static void sensormgr_file_writer_task(void *pvParam) {
+static void sensormgr_task_file_writer(void *pvParam) {
   time_t timestamp;
   struct tm timestamp_tm;
   char f_name[24];
@@ -248,6 +314,7 @@ static void sensormgr_file_writer_task(void *pvParam) {
   // High watermark means drain ring buffer to the file till either empty or low
   // watermark
   ESP_LOGI(TAG, "File writing task starting...");
+  sensormgr_log_free_space();
   for (;;) {
     xEventGroupWaitBits(
         mqttmgr_events,
@@ -259,7 +326,11 @@ static void sensormgr_file_writer_task(void *pvParam) {
     // Check freespace, if we're too low then wait till something else has
     // drained the FS for us
     if (sensormgr_free_space() < SENSORMGR_FS_HIGHWATER) {
+      ESP_LOGI(TAG, "File writing task paused, not enough free space...");
+      ESP_LOGI(TAG, "File writing task pausing sensor polling...");
+      // Clear polling, but make sure the system wants to drain the queue
       xEventGroupClearBits(mqttmgr_events, SENSORMGR_POLLSENSORS_BIT);
+      xEventGroupSetBits(mqttmgr_events, SENSORMGR_LOWWATER_BIT);
       xEventGroupWaitBits(
           mqttmgr_events,
           SENSORMGR_POLLSENSORS_BIT,  // Will be re-enabled by the read iterator
@@ -303,15 +374,17 @@ static void sensormgr_file_writer_task(void *pvParam) {
     f_out = NULL;
     if (sensormgr_free_space() <
         SENSORMGR_FS_HIGHWATER) {  // File space is full, stop polling
+      ESP_LOGI(TAG, "File writing task pausing sensor polling, disk full...");
+      // Clear polling, but make sure the system wants to drain the queue
       xEventGroupClearBits(mqttmgr_events, SENSORMGR_POLLSENSORS_BIT);
-      // TODO: Does anything _set_ this bit if we have enough freespace?
+      xEventGroupSetBits(mqttmgr_events, SENSORMGR_LOWWATER_BIT);
     }
     xEventGroupSetBits(mqttmgr_events, SENSORMGR_DONEWRITING_BIT);
   }
 }
 
 // At low-water try to send data if connected, till empty.
-static void sensormgr_queuesend_task(void *pvParam) {
+static void sensormgr_task_queuesend(void *pvParam) {
   uint8_t idx;
   sensor_iterator_t iter_state = {
       .state = INIT,
@@ -325,7 +398,7 @@ static void sensormgr_queuesend_task(void *pvParam) {
   mqttmgr_msg_t msg;
   esp_err_t ret;
 
-  ESP_LOGI(TAG, "Staring %s task", SENSORMGR_QUEUETASK_NAME);
+  ESP_LOGI(TAG, "Staring %s task", SENSORMGR_TASKNAME_QUEUE);
   for (;;) {
     xEventGroupWaitBits(mqttmgr_events,
                         MQTTMGR_CLIENT_STARTED_BIT |
@@ -334,15 +407,14 @@ static void sensormgr_queuesend_task(void *pvParam) {
                         pdFALSE,  // Do NOT clear the bits before returning
                         pdTRUE,   // Wait for ALL bits to be set
                         portMAX_DELAY);
-    sensormgr_free_space();
-    ESP_LOGD(TAG, "marshalling...");
+    ESP_LOGD(TAG, "marshalling loop...");
     root = cJSON_CreateObject();
     cJSON_AddItemToObject(
         root, "metadata",
         metadata = cJSON_CreateObject());  // TODO: how to get device-id and
                                            // friendly name here?
     cJSON_AddItemToObject(root, "data", sensor_array = cJSON_CreateArray());
-    for (idx = 0; idx < 5; idx++) {
+    for (idx = 0; idx < 10; idx++) {
       sensormgr_read_iter(&iter_state, true);
       if (iter_state.reading == NULL) {
         break;  // No data in ringbuffer, wait to be signled
@@ -366,7 +438,7 @@ static void sensormgr_queuesend_task(void *pvParam) {
       };
       // Retry sending to the mqtt queue forever
       do {
-        ret = mqttmgr_queuemsg(&msg);
+        ret = mqttmgr_queuemsg(&msg, portMAX_DELAY);
       } while (ret != ESP_OK);
     }
     cJSON_Delete(root);  // Cleanup after all that JSON
@@ -376,34 +448,44 @@ static void sensormgr_queuesend_task(void *pvParam) {
 }
 
 // Poll only while able to buffer safely
-static void sensormgr_sensorread_task(void *pvParam) {
-  time_t timestamp;
-  uint8_t idx;
+static void sensormgr_task_sensorread(void *pvParam) {
+  uint8_t idx, loop_cnt = 0;
   void *sensor_data_ptr;
   size_t sensor_data_len, free_buf_size;
   esp_err_t ret;
   sensor_reading_t *wrapped_reading;
 
-  ESP_LOGI(TAG, "Starting %s task", SENSORMGR_MEASURETASK_NAME);
-  for (;;) {
+  ESP_LOGI(TAG, "Starting %s task", SENSORMGR_TASKNAME_READ);
+  for (;; loop_cnt++) {
     xEventGroupWaitBits(mqttmgr_events, SENSORMGR_POLLSENSORS_BIT,
                         pdFALSE,  // Do NOT clear the bits before returning
                         pdTRUE,   // Wait for ALL bits to be set
                         portMAX_DELAY);
-    time(&timestamp);
     ESP_LOGD(TAG, "Polling %x sensors", state.sensor_cnt);
     for (idx = 0; idx < state.sensor_cnt; idx++) {
       sensor_data_ptr = NULL;
       sensor_data_len = 0;
       ret = state.sensors[idx].measure(&sensor_data_ptr, &sensor_data_len);
-      /*ESP_LOGI(TAG, "Storing %d in ringbuf (free: %d)", sensor_data_len,
-       * xRingbufferGetCurFreeSize(state.ring_buffer));*/
+      ESP_LOGV(TAG, "Storing %d in ringbuf (free: %d)", sensor_data_len,
+               xRingbufferGetCurFreeSize(state.ring_buffer));
       if (ret == ESP_OK) {
-        if (pdTRUE != xRingbufferSendAcquire(
-                          state.ring_buffer, (void **)&wrapped_reading,
-                          sizeof(sensor_reading_t) + sensor_data_len, 0)) {
+        while (pdTRUE != xRingbufferSendAcquire(
+                             state.ring_buffer, (void **)&wrapped_reading,
+                             sizeof(sensor_reading_t) + sensor_data_len, 0)) {
+          // This likely means the FS is full
+          // The ring buffer is full
+          // AND MQTT is offline
+          // We have to wait for that to come back, and for the buffers to drain
+          // It can take a bit for the FS to drain as well so delay for 5
+          // seconds here too
           ESP_LOGE(TAG, "Error storing measurement in ring buffer");
-          // TODO: Okay so I can't store... now what?
+          xEventGroupWaitBits(
+              mqttmgr_events,
+              MQTTMGR_CLIENT_CONNECTED_BIT | SENSORMGR_POLLSENSORS_BIT,
+              pdFALSE,  // Do NOT clear the bits before returning
+              pdTRUE,   // Wait for ALL bits to be set
+              portMAX_DELAY);
+          vTaskDelay(5000 / portTICK_PERIOD_MS);
         }
         *wrapped_reading = (sensor_reading_t){
             .type_idx = idx,
@@ -414,18 +496,18 @@ static void sensormgr_sensorread_task(void *pvParam) {
         state.ring_buffer_item_count++;
       }
     }
-    ESP_LOGV(TAG, "data writting to ringbuffer");
+    ESP_LOGV(TAG, "data written to ringbuffer");
     free_buf_size = xRingbufferGetCurFreeSize(state.ring_buffer);
     if (free_buf_size < SENSORMGR_RINBUFFER_LOWWATER ||
-        state.ring_buffer_item_count > SENSORMGR_RINBUFFER_LOWWATER_ITEM_CNT) {
+        (state.LOWWATER_ITEM_CNT != 0 &&
+         state.ring_buffer_item_count > state.LOWWATER_ITEM_CNT)) {
       xEventGroupSetBits(mqttmgr_events, SENSORMGR_LOWWATER_BIT);
       ESP_LOGI(TAG,
                "low-water bit set: (low: %d, high: %d) %d < %d | %d (item cnt) "
                "> %d (low water mark)",
                SENSORMGR_RINBUFFER_LOWWATER, SENSORMGR_RINBUFFER_HIGHWATER,
                free_buf_size, SENSORMGR_RINBUFFER_LOWWATER,
-               state.ring_buffer_item_count,
-               SENSORMGR_RINBUFFER_LOWWATER_ITEM_CNT);
+               state.ring_buffer_item_count, state.LOWWATER_ITEM_CNT);
     }
     if (free_buf_size < SENSORMGR_RINBUFFER_HIGHWATER) {
       xEventGroupSetBits(mqttmgr_events, SENSORMGR_HIGHWATER_BIT);
@@ -433,6 +515,11 @@ static void sensormgr_sensorread_task(void *pvParam) {
                SENSORMGR_RINBUFFER_HIGHWATER);
     }
     vTaskDelay(CONFIG_SENSORMGR_SAMPLE_RATE / portTICK_RATE_MS);
+
+    if (loop_cnt > 250) {
+      sensormgr_log_stats();
+      loop_cnt = 0;
+    }
   }
 }
 
@@ -442,6 +529,7 @@ esp_err_t sensormgr_init() {
   char f_name[24];
 
   state = (state_t){
+      .LOWWATER_ITEM_CNT = SENSORMGR_RINBUFFER_LOWWATER_ITEM_CNT,
       .ring_buffer =
           xRingbufferCreate(SENSORMGR_RINBUFFER_SIZE, RINGBUF_TYPE_NOSPLIT),
       .ring_buffer_item_count = 0,
@@ -477,6 +565,8 @@ esp_err_t sensormgr_init() {
     ESP_LOGI(TAG, "Previously saved sensordata detected!");
   }
 
+  mqttmgr_register_cmd_handler(sensormgrmgr_cmd_get_stats);
+
   return ESP_OK;
 }
 
@@ -487,8 +577,7 @@ esp_err_t sensormgr_start() {
   }
 
   if (state.measure_task_handle == NULL &&
-      pdPASS != xTaskCreate(sensormgr_sensorread_task,
-                            SENSORMGR_MEASURETASK_NAME,
+      pdPASS != xTaskCreate(sensormgr_task_sensorread, SENSORMGR_TASKNAME_READ,
                             SENSORMGR_TASK_STACKSIZE, (void *)1,
                             tskIDLE_PRIORITY, &state.measure_task_handle)) {
     ESP_LOGE(TAG, "Failed creating task sensorread!");
@@ -499,7 +588,7 @@ esp_err_t sensormgr_start() {
   }
 
   if (state.queue_task_handle == NULL &&
-      pdPASS != xTaskCreate(sensormgr_queuesend_task, SENSORMGR_QUEUETASK_NAME,
+      pdPASS != xTaskCreate(sensormgr_task_queuesend, SENSORMGR_TASKNAME_QUEUE,
                             SENSORMGR_TASK_STACKSIZE, (void *)1,
                             tskIDLE_PRIORITY, &state.queue_task_handle)) {
     ESP_LOGE(TAG, "Failed creating task queuesend!");
@@ -510,8 +599,8 @@ esp_err_t sensormgr_start() {
   }
 
   if (state.filewriter_task_handle == NULL &&
-      pdPASS != xTaskCreate(sensormgr_file_writer_task,
-                            SENSORMGR_FILEWRITERTASK_NAME,
+      pdPASS != xTaskCreate(sensormgr_task_file_writer,
+                            SENSORMGR_TASKNAME_FILEWRITER,
                             SENSORMGR_TASK_STACKSIZE, (void *)1,
                             tskIDLE_PRIORITY, &state.filewriter_task_handle)) {
     ESP_LOGE(TAG, "Failed creating task filewriter!");
@@ -521,6 +610,7 @@ esp_err_t sensormgr_start() {
     vTaskResume(state.filewriter_task_handle);
   }
 
+  sensormgr_log_stats();
   ESP_LOGI(TAG, "started!");
   return ESP_OK;
 }
