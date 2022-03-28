@@ -11,16 +11,18 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <uuid.h>
+#include <wifi_provision.h>
 
 #include "alarm.h"
+#include "blinky.h"
 #include "ltr390mgr.h"
 #include "mqttlog.h"
 #include "mqttmgr.h"
 #include "sensormgr.h"
 #include "sht4xmgr.h"
 #include "shtc3mgr.h"
-#include "uuid.h"
-#include "wifi_provision.h"
+#include "touchbtn.h"
 
 #define CFG_ID "pciot_cfg_id"
 
@@ -127,6 +129,10 @@ void sensor_init() {
 #if CONFIG_SHT4X_ENABLED
   ESP_ERROR_CHECK(sht4xmgr_init());
 #endif
+#if CONFIG_TOUCHBTN_ENABLED
+  touchbtn_init();
+#endif
+  blinky_init();
 }
 
 void app_main() {
@@ -135,7 +141,7 @@ void app_main() {
   sensor_init();
 
   mqttmgr_start();
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  vTaskDelay(10000 / portTICK_PERIOD_MS);
   sensormgr_start();
   MQTTLOG_LOGI(TAG, "test message", "");
 }

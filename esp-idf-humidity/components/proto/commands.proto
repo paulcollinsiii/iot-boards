@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "modules/alarm.proto";
+import "modules/blinky.proto";
 import "modules/ltr390.proto";
 import "modules/sensormgr.proto";
 import "modules/shtc3.proto";
@@ -19,6 +20,7 @@ message CommandRequest {
     shtc3.SetOptionsRequest shtc3_set_options_request = 9;
     shtc3.GetOptionsRequest shtc3_get_options_request = 10;
     sensormgr.GetStatsRequest sensormgr_get_stats_request = 11;
+    blinky.SetLEDRequest blinky_set_led_request = 12;
   }
 }
 
@@ -41,5 +43,6 @@ message CommandResponse {
     shtc3.SetOptionsResponse shtc3_set_options_response = 10;
     shtc3.GetOptionsResponse shtc3_get_options_response = 11;
     sensormgr.GetStatsResponse sensormgr_get_stats_response = 12;
+    blinky.SetLEDResponse blinky_set_led_response = 13;
   }
 }

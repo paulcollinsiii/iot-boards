@@ -1,0 +1,21 @@
+menu "touch buttons"
+
+config TOUCHBTN_ENABLED
+  bool "Enable Touch buttons"
+  default n
+
+config TOUCHBTN_WIFI_PAD
+  depends on TOUCHBTN_ENABLED
+  depends on IDF_TARGET_ESP32
+  int "Touchpad id for wifi button"
+  default 9
+  range 0 10
+
+config TOUCHBTN_SLEEP_PAD
+  depends on TOUCHBTN_ENABLED
+  depends on IDF_TARGET_ESP32
+  int "Touchpad id for sleep button"
+  default 8
+  range 0 10
+
+endmenu

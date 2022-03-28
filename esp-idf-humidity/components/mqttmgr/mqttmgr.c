@@ -3,7 +3,8 @@
 #include <backoff_algorithm.h>
 #include <esp_log.h>
 #include <esp_wifi.h>
-#include <freertos/queue.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/ringbuf.h>
 #include <mqtt_client.h>
 
 #define MQTT_TASK_NAME "mqtt"
@@ -22,9 +23,10 @@ char topic_names[4][64];
 static BackoffAlgorithmContext_t retryParams;
 
 typedef struct _mqttmgr_state_t {
-  TaskHandle_t mqtt_client_watcher_handle;
-  TaskHandle_t mqtt_task_handle;
-  QueueHandle_t msg_queue;
+  TaskHandle_t task_client_watchdog;  // TODO: Make exposed function to notify
+                                      // this handler
+  TaskHandle_t task_msgqueue;
+  RingbufHandle_t msg_queue;
 
   time_t disabled_at;
   uint8_t retry_count;
@@ -108,6 +110,25 @@ loop_exit:
   free(resp.uuid);
   free(buf);
 }
+
+/**
+ * @brief Attempt to reconnect to Wifi and MQTT server now
+ *
+ * Will reset the backoff algorithm as well.
+ *
+ * @return esp_err_t
+ *    ESP_OK - Reconnect Task Notified
+ *    ESP_ERR_WIFI_STATE - Already connected
+ */
+esp_err_t mqttmgr_reconnect_now() {
+  EventBits_t current_state = xEventGroupGetBits(mqttmgr_events);
+  if (!(current_state & MQTTMGR_CLIENT_NOTCONNECTED_BIT)) {
+    return ESP_ERR_WIFI_STATE;
+  }
+  xTaskNotifyGive(state.task_client_watchdog);
+  return ESP_OK;
+}
+
 /**
  * @brief Stop all MQTT related task handlers
  *
@@ -171,7 +192,7 @@ static void mqttmgr_event_handler(void *handler_args, esp_event_base_t base,
  *  - ESP_OK: Success
  *  - ESP_FAIL: Failed to data queue
  */
-static void mqttmgr_client_watcher(void *pvParam) {
+static void mqttmgr_client_watchdog(void *pvParam) {
   uint16_t nextRetryBackoff = 0;
   uint8_t disconn_event_count = 0;
   ESP_LOGI(TAG, "Starting mqtt-client-watchdog");
@@ -197,8 +218,18 @@ static void mqttmgr_client_watcher(void *pvParam) {
       xEventGroupClearBits(mqttmgr_events, MQTTMGR_CLIENT_STARTED_BIT |
                                                MQTTMGR_CLIENT_CONNECTED_BIT);
 
-      vTaskDelay((nextRetryBackoff * 1000) / portTICK_PERIOD_MS);
-      ESP_LOGI(TAG, "attempting to connect to mqtt again...");
+      if (pdTRUE ==
+          xTaskNotifyWait(0x0, ULONG_MAX, NULL,
+                          (nextRetryBackoff * 1000) / portTICK_PERIOD_MS)) {
+        ESP_LOGI(TAG, "(notified) attempting to connect to mqtt again...");
+        ESP_LOGI(TAG, "(notified) resetting backoff params...");
+        BackoffAlgorithm_InitializeParams(&retryParams, MQTT_BASE_BACKOFF_SEC,
+                                          MQTT_MAX_BACKOFF,
+                                          BACKOFF_ALGORITHM_RETRY_FOREVER);
+      } else {
+        ESP_LOGI(TAG, "attempting to connect to mqtt again...");
+      }
+
       esp_wifi_start();
       vTaskDelay(5000 / portTICK_PERIOD_MS);  // 5 seconds to connect WiFi
       esp_mqtt_client_start(state.client);
@@ -213,7 +244,8 @@ static void mqttmgr_client_watcher(void *pvParam) {
  */
 static void mqttmgr_task_msgqueue(void *pvParam) {
   bool resetBackoff = false;
-  mqttmgr_msg_t msg_buffer;
+  mqttmgr_msg_t *msg_buffer;
+  size_t msg_size;
   uint16_t nextRetryBackoff = 0;
   BackoffAlgorithmContext_t mqttRetryParams;
 
@@ -223,8 +255,9 @@ static void mqttmgr_task_msgqueue(void *pvParam) {
 
   ESP_LOGD(TAG, "mqtt task entering loop");
   for (;;) {
-    /*ulTaskNotifyTake(pdTRUE, portMAX_DELAY);*/
-    if (pdFALSE == xQueueReceive(state.msg_queue, &msg_buffer, portMAX_DELAY)) {
+    msg_buffer = (mqttmgr_msg_t *)xRingbufferReceive(state.msg_queue, &msg_size,
+                                                     portMAX_DELAY);
+    if (msg_buffer == NULL) {
       ESP_LOGE(TAG, "Failed to receive msg from msg queue!");
       abort();
     }
@@ -235,11 +268,11 @@ static void mqttmgr_task_msgqueue(void *pvParam) {
         pdTRUE,   // Wait for ALL bits to be set
         portMAX_DELAY);
     ESP_LOGD(TAG, "publishing message to topic: %s",
-             topic_names[msg_buffer.topic]);
+             topic_names[msg_buffer->topic]);
     // Retry publishing the msg on failures with expo backoff
     while (-1 == esp_mqtt_client_publish(
-                     state.client, topic_names[msg_buffer.topic],
-                     msg_buffer.msg, msg_buffer.len,
+                     state.client, topic_names[msg_buffer->topic],
+                     (char *)msg_buffer->msg, msg_buffer->len,
                      1,  // QoS 1
                      1   // Retain as the last msg from this device
                      )) {
@@ -255,7 +288,7 @@ static void mqttmgr_task_msgqueue(void *pvParam) {
                                         BACKOFF_ALGORITHM_RETRY_FOREVER);
       resetBackoff = false;
     }
-    free(msg_buffer.msg);
+    vRingbufferReturnItem(state.msg_queue, msg_buffer);
   }
 }
 
@@ -276,7 +309,7 @@ esp_err_t mqttmgr_init(char *device_id) {
   // Init state, cmd_handlers, and backoff state
   mqttmgr_events = xEventGroupCreate();
   state = (mqttmgr_state_t){
-      .msg_queue = xQueueCreate(5, sizeof(mqttmgr_msg_t)),
+      .msg_queue = xRingbufferCreate(4096, RINGBUF_TYPE_NOSPLIT),
       .disabled_at = 0,
       .retry_count = 0,
       .client = esp_mqtt_client_init(&mqtt_cfg),
@@ -304,15 +337,15 @@ esp_err_t mqttmgr_start() {
   BaseType_t result;
   result =
       xTaskCreate(mqttmgr_task_msgqueue, MQTT_TASK_NAME, MQTT_TASK_STACKSIZE,
-                  (void *)1, tskIDLE_PRIORITY, &state.mqtt_task_handle);
+                  (void *)1, tskIDLE_PRIORITY, &state.task_msgqueue);
   if (result != pdPASS) {
     ESP_LOGE(TAG, "Error starting mqtt task!");
     return ESP_FAIL;
   }
 
-  result = xTaskCreate(mqttmgr_client_watcher, MQTT_CLIENTWATCHER_NAME,
+  result = xTaskCreate(mqttmgr_client_watchdog, MQTT_CLIENTWATCHER_NAME,
                        MQTT_CLIENTWATCHER_STACKSIZE, (void *)1,
-                       tskIDLE_PRIORITY, &state.mqtt_client_watcher_handle);
+                       tskIDLE_PRIORITY, &state.task_client_watchdog);
   if (result != pdPASS) {
     ESP_LOGE(TAG, "Error starting mqtt-client-watcher task!");
     return ESP_FAIL;
@@ -332,23 +365,43 @@ esp_err_t mqttmgr_stop() {
   if (xEventGroupGetBits(mqttmgr_events) & MQTTMGR_CLIENT_STARTED_BIT) {
     xEventGroupClearBits(mqttmgr_events, MQTTMGR_CLIENT_STARTED_BIT |
                                              MQTTMGR_CLIENT_CONNECTED_BIT);
+    /*xEventGroupSetBits(mqttmgr_events, MQTTMGR_CLIENT_DISCONNECTED_BIT |*/
+    /*MQTTMGR_CLIENT_NOTCONNECTED_BIT);*/
     esp_mqtt_client_stop(state.client);
   }
 
-  if (state.mqtt_task_handle != NULL) {
-    vTaskSuspend(state.mqtt_task_handle);
+  if (state.task_msgqueue != NULL) {
+    vTaskSuspend(state.task_msgqueue);
+    vTaskSuspend(state.task_client_watchdog);
   }
 
   return ESP_OK;
 }
 
-esp_err_t mqttmgr_queuemsg(mqttmgr_msg_t *msg, TickType_t delay) {
-  if (state.mqtt_task_handle == NULL) {
+esp_err_t mqttmgr_queuemsg(mqttmgr_topicidx topic, size_t msg_len, void *msg,
+                           TickType_t delay) {
+  mqttmgr_msg_t *rb_msg;
+
+  if (state.task_msgqueue == NULL) {
     return ESP_ERR_INVALID_STATE;
   }
-  return pdTRUE == xQueueSend(state.msg_queue, msg, portMAX_DELAY)
-             ? ESP_OK
-             : ESP_ERR_NO_MEM;
+  if (pdTRUE != xRingbufferSendAcquire(state.msg_queue, (void **)&rb_msg,
+                                       sizeof(mqttmgr_msg_t) + msg_len,
+                                       delay)) {
+    if (delay == portMAX_DELAY) {
+      ESP_LOGE(TAG, "Unable to queue message: Message too large");
+      return ESP_ERR_INVALID_ARG;
+    }
+    ESP_LOGW(TAG, "Unable to queue msg!");
+    return ESP_ERR_NO_MEM;
+  }
+  *rb_msg = (mqttmgr_msg_t){
+      .len = msg_len,
+      .topic = topic,
+  };
+  memcpy(rb_msg->msg, msg, msg_len);
+  xRingbufferSendComplete(state.msg_queue, rb_msg);
+  return ESP_OK;
 }
 
 esp_err_t mqttmgr_register_cmd_handler(cmdhandler *handler) {

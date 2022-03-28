@@ -1,0 +1,8 @@
+menu "mqttlog"
+
+config MQTTLOG_RINGBUF_SIZE
+  int "Ringbuffer size (in K) for log messages"
+  default 2
+  range 1 4096
+
+endmenu

@@ -45,7 +45,7 @@ typedef enum {
 typedef struct {
   mqttmgr_topicidx topic;
   size_t len;
-  void *msg;
+  uint8_t msg[];
 } mqttmgr_msg_t;
 
 typedef void(dealloc_cb_fn)(CommandResponse *resp_out);
@@ -73,6 +73,17 @@ typedef CommandResponse__RetCodeT(cmdhandler)(CommandRequest *message,
  *  - ESP_FAIL: Failed to add handler
  */
 esp_err_t mqttmgr_register_cmd_handler(cmdhandler *);
+
+/**
+ * @brief Attempt to reconnect to Wifi and MQTT server now
+ *
+ * Will reset the backoff algorithm as well.
+ *
+ * @return esp_err_t
+ *    ESP_OK - Reconnect Task Notified
+ *    ESP_ERR_WIFI_STATE - Already connected
+ */
+esp_err_t mqttmgr_reconnect_now();
 
 /**
  * @brief Initalize MQTT config and internal state
@@ -117,6 +128,7 @@ esp_err_t mqttmgr_stop();
  *  - ESP_OK: Success
  *  - ESP_FAIL: Failed to data queue
  */
-esp_err_t mqttmgr_queuemsg(mqttmgr_msg_t *msg, TickType_t delay);
+esp_err_t mqttmgr_queuemsg(mqttmgr_topicidx topic, size_t msg_len, void *msg,
+                           TickType_t delay);
 
 #endif

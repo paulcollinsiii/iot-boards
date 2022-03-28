@@ -1,0 +1,9 @@
+menu "blinky lights"
+
+config BLINKY_MAX_BRIGHTNESS
+  depends on IDF_TARGET_ESP32S2
+  int "Max brightness for NeoPixel"
+  default 31
+  range 1 31
+
+endmenu
