@@ -1,6 +1,7 @@
 set(src_files
   "build/commands.pb-c.c"
   "build/modules/alarm.pb-c.c"
+  "build/modules/blinky.pb-c.c"
   "build/modules/ltr390.pb-c.c"
   "build/modules/sensormgr.pb-c.c"
   "build/modules/sht4x.pb-c.c"

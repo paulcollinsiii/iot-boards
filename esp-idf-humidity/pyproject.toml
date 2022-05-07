@@ -12,6 +12,8 @@ protobuf = "^3.19.1"
 paho-mqtt = "^1.6.1"
 asyncio-mqtt = "^0.11.0"
 mypy-protobuf = "^3.0.0"
+construct = "^2.10.68"
+pygdbmi = "<=0.9.0.2"
 
 [tool.poetry.dev-dependencies]
 

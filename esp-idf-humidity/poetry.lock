@@ -156,6 +156,17 @@ optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 
 [[package]]
+name = "construct"
+version = "2.10.68"
+description = "A powerful declarative symmetric parser/builder for binary data"
+category = "main"
+optional = false
+python-versions = ">=3.6"
+
+[package.extras]
+extras = ["arrow", "cloudpickle", "enum34", "lz4", "numpy", "ruamel.yaml"]
+
+[[package]]
 name = "decorator"
 version = "5.1.1"
 description = "Decorators for Humans"
@@ -354,7 +365,7 @@ test = ["appdirs (==1.4.4)", "pytest (>=6)", "pytest-cov (>=2.7)", "pytest-mock 
 
 [[package]]
 name = "platformio"
-version = "5.2.4"
+version = "5.2.5"
 description = "A professional collaborative platform for embedded development. Cross-platform IDE and Unified Debugger. Static Code Analyzer and Remote Unit Testing. Multi-platform and Multi-architecture Build System. Firmware File Explorer and Memory Inspection. IoT, Arduino, CMSIS, ESP-IDF, FreeRTOS, libOpenCM3, mbedOS, Pulp OS, SPL, STM32Cube, Zephyr RTOS, ARM, AVR, Espressif (ESP8266/ESP32), FPGA, MCS-51 (8051), MSP430, Nordic (nRF51/nRF52), NXP i.MX RT, PIC32, RISC-V, STMicroelectronics (STM8/STM32), Teensy"
 category = "main"
 optional = false
@@ -364,18 +375,18 @@ python-versions = "*"
 aiofiles = ">=0.8.0,<0.9.0"
 ajsonrpc = ">=1.0.0,<2.0.0"
 bottle = ">=0.12.0,<0.13.0"
-click = ">=8,<8.0.2 || >8.0.2,<9"
+click = ">=8.0.3,<9"
 colorama = "*"
 marshmallow = ">=2,<4"
 pyelftools = ">=0.27,<1"
 pyserial = ">=3.0.0,<4.0.0"
 requests = ">=2.0.0,<3.0.0"
-semantic_version = ">=2.8.0,<2.9.0"
-starlette = ">=0.17.0,<0.18.0"
+semantic_version = ">=2.9.0,<2.10.0"
+starlette = ">=0.18.0,<0.19.0"
 tabulate = ">=0.8.0,<0.9.0"
-uvicorn = ">=0.16.0,<0.17.0"
+uvicorn = ">=0.17.0,<0.18.0"
 wsproto = ">=1.0.0,<1.1.0"
-zeroconf = ">=0.37.0,<0.38.0"
+zeroconf = ">=0.38.0,<0.39.0"
 
 [[package]]
 name = "prompt-toolkit"
@@ -424,6 +435,17 @@ optional = false
 python-versions = "*"
 
 [[package]]
+name = "pygdbmi"
+version = "0.9.0.2"
+description = "Parse gdb machine interface output with Python"
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.extras]
+dev = ["flake8 (==3.5.0)", "collective.checkdocs (==0.2)", "black", "pdoc", "pdoc3"]
+
+[[package]]
 name = "pygments"
 version = "2.11.2"
 description = "Pygments is a syntax highlighting package written in Python."
@@ -462,11 +484,15 @@ use_chardet_on_py3 = ["chardet (>=3.0.2,<5)"]
 
 [[package]]
 name = "semantic-version"
-version = "2.8.5"
+version = "2.9.0"
 description = "A library implementing the 'SemVer' scheme."
 category = "main"
 optional = false
-python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
+python-versions = ">=2.7"
+
+[package.extras]
+dev = ["Django (>=1.11)", "nose2", "tox", "check-manifest", "coverage", "flake8", "wheel", "zest.releaser", "readme-renderer (<25.0)", "colorama (<=0.4.1)"]
+doc = ["sphinx", "sphinx-rtd-theme"]
 
 [[package]]
 name = "six"
@@ -502,7 +528,7 @@ tests = ["pytest", "typeguard", "pygments", "littleutils"]
 
 [[package]]
 name = "starlette"
-version = "0.17.1"
+version = "0.18.0"
 description = "The little ASGI library that shines."
 category = "main"
 optional = false
@@ -510,6 +536,7 @@ python-versions = ">=3.6"
 
 [package.dependencies]
 anyio = ">=3.0.0,<4"
+typing-extensions = {version = "*", markers = "python_version < \"3.10\""}
 
 [package.extras]
 full = ["itsdangerous", "jinja2", "python-multipart", "pyyaml", "requests"]
@@ -586,11 +613,11 @@ socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 
 [[package]]
 name = "uvicorn"
-version = "0.16.0"
+version = "0.17.6"
 description = "The lightning-fast ASGI server."
 category = "main"
 optional = false
-python-versions = "*"
+python-versions = ">=3.7"
 
 [package.dependencies]
 asgiref = ">=3.4.0"
@@ -598,7 +625,7 @@ click = ">=7.0"
 h11 = ">=0.8"
 
 [package.extras]
-standard = ["httptools (>=0.2.0,<0.4.0)", "watchgod (>=0.6)", "python-dotenv (>=0.13)", "PyYAML (>=5.1)", "websockets (>=9.1)", "websockets (>=10.0)", "uvloop (>=0.14.0,!=0.15.0,!=0.15.1)", "colorama (>=0.4)"]
+standard = ["websockets (>=10.0)", "httptools (>=0.4.0)", "watchgod (>=0.6)", "python-dotenv (>=0.13)", "PyYAML (>=5.1)", "uvloop (>=0.14.0,!=0.15.0,!=0.15.1)", "colorama (>=0.4)"]
 
 [[package]]
 name = "wcwidth"
@@ -621,7 +648,7 @@ h11 = ">=0.9.0,<1"
 
 [[package]]
 name = "zeroconf"
-version = "0.37.0"
+version = "0.38.4"
 description = "Pure Python Multicast DNS Service Discovery Library (Bonjour/Avahi compatible)"
 category = "main"
 optional = false
@@ -633,7 +660,7 @@ ifaddr = ">=0.1.7"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "be2215bae66c628b3550e4ea6ac4ad2bc0a9f847a3859e72ab7e3f76d412110c"
+content-hash = "90a15cb36a562fa86de3fc40ec88f6dbc595ddeb0e7352f15afa916d38386122"
 
 [metadata.files]
 aiofiles = [
@@ -691,6 +718,9 @@ click = [
 colorama = [
     {file = "colorama-0.4.4-py2.py3-none-any.whl", hash = "sha256:9f47eda37229f68eee03b24b9748937c7dc3868f906e8ba69fbcbdd3bc5dc3e2"},
     {file = "colorama-0.4.4.tar.gz", hash = "sha256:5941b2b48a20143d2267e95b1c2a7603ce057ee39fd88e7329b0c292aa16869b"},
+]
+construct = [
+    {file = "construct-2.10.68.tar.gz", hash = "sha256:7b2a3fd8e5f597a5aa1d614c3bd516fa065db01704c72a1efaaeec6ef23d8b45"},
 ]
 decorator = [
     {file = "decorator-5.1.1-py3-none-any.whl", hash = "sha256:b8c3f85900b9dc423225913c5aace94729fe1fa9763b38939a95226f02d37186"},
@@ -760,7 +790,7 @@ platformdirs = [
     {file = "platformdirs-2.4.1.tar.gz", hash = "sha256:440633ddfebcc36264232365d7840a970e75e1018d15b4327d11f91909045fda"},
 ]
 platformio = [
-    {file = "platformio-5.2.4.tar.gz", hash = "sha256:822ac16e1bcf578b2645466c728f2779e1083ccb4fa21336f4d6539acec53e08"},
+    {file = "platformio-5.2.5.tar.gz", hash = "sha256:aa0d1ff8a17ac1952eb45d37a84d4aa6e5d1aa65098bd1525db34be83c42c4ae"},
 ]
 prompt-toolkit = [
     {file = "prompt_toolkit-3.0.24-py3-none-any.whl", hash = "sha256:e56f2ff799bacecd3e88165b1e2f5ebf9bcd59e80e06d395fa0cc4b8bd7bb506"},
@@ -806,6 +836,10 @@ pyelftools = [
     {file = "pyelftools-0.27-py2.py3-none-any.whl", hash = "sha256:5609aa6da1123fccfae2e8431a67b4146aa7fad5b3889f808df12b110f230937"},
     {file = "pyelftools-0.27.tar.gz", hash = "sha256:cde854e662774c5457d688ca41615f6594187ba7067af101232df889a6b7a66b"},
 ]
+pygdbmi = [
+    {file = "pygdbmi-0.9.0.2-py3-none-any.whl", hash = "sha256:91e6a84b52994a64945aec98ea50189ff4f4cc1082947cc4850eb419044021c3"},
+    {file = "pygdbmi-0.9.0.2.tar.gz", hash = "sha256:52a95fc53bf52f570c74d77dccc3202c9bb9c89e6cb14f6bffde8528835d4a4b"},
+]
 pygments = [
     {file = "Pygments-2.11.2-py3-none-any.whl", hash = "sha256:44238f1b60a76d78fc8ca0528ee429702aae011c265fe6a8dd8b63049ae41c65"},
     {file = "Pygments-2.11.2.tar.gz", hash = "sha256:4e426f72023d88d03b2fa258de560726ce890ff3b630f88c21cbb8b2503b8c6a"},
@@ -819,8 +853,8 @@ requests = [
     {file = "requests-2.27.1.tar.gz", hash = "sha256:68d7c56fd5a8999887728ef304a6d12edc7be74f1cfa47714fc8b414525c9a61"},
 ]
 semantic-version = [
-    {file = "semantic_version-2.8.5-py2.py3-none-any.whl", hash = "sha256:45e4b32ee9d6d70ba5f440ec8cc5221074c7f4b0e8918bdab748cc37912440a9"},
-    {file = "semantic_version-2.8.5.tar.gz", hash = "sha256:d2cb2de0558762934679b9a104e82eca7af448c9f4974d1f3eeccff651df8a54"},
+    {file = "semantic_version-2.9.0-py2.py3-none-any.whl", hash = "sha256:db2504ab37902dd2c9876ece53567aa43a5b2a417fbe188097b2048fff46da3d"},
+    {file = "semantic_version-2.9.0.tar.gz", hash = "sha256:abf54873553e5e07a6fd4d5f653b781f5ae41297a493666b59dcf214006a12b2"},
 ]
 six = [
     {file = "six-1.16.0-py2.py3-none-any.whl", hash = "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"},
@@ -835,8 +869,8 @@ stack-data = [
     {file = "stack_data-0.1.4.tar.gz", hash = "sha256:7769ed2482ce0030e00175dd1bf4ef1e873603b6ab61cd3da443b410e64e9477"},
 ]
 starlette = [
-    {file = "starlette-0.17.1-py3-none-any.whl", hash = "sha256:26a18cbda5e6b651c964c12c88b36d9898481cd428ed6e063f5f29c418f73050"},
-    {file = "starlette-0.17.1.tar.gz", hash = "sha256:57eab3cc975a28af62f6faec94d355a410634940f10b30d68d31cb5ec1b44ae8"},
+    {file = "starlette-0.18.0-py3-none-any.whl", hash = "sha256:377d64737a0e03560cb8eaa57604afee143cea5a4996933242798a7820e64f53"},
+    {file = "starlette-0.18.0.tar.gz", hash = "sha256:b45c6e9a617ecb5caf7e6446bd8d767b0084d6217e8e1b08187ca5191e10f097"},
 ]
 tabulate = [
     {file = "tabulate-0.8.9-py3-none-any.whl", hash = "sha256:d7c013fe7abbc5e491394e10fa845f8f32fe54f8dc60c6622c6cf482d25d47e4"},
@@ -867,8 +901,8 @@ urllib3 = [
     {file = "urllib3-1.26.8.tar.gz", hash = "sha256:0e7c33d9a63e7ddfcb86780aac87befc2fbddf46c58dbb487e0855f7ceec283c"},
 ]
 uvicorn = [
-    {file = "uvicorn-0.16.0-py3-none-any.whl", hash = "sha256:d8c839231f270adaa6d338d525e2652a0b4a5f4c2430b5c4ef6ae4d11776b0d2"},
-    {file = "uvicorn-0.16.0.tar.gz", hash = "sha256:eacb66afa65e0648fcbce5e746b135d09722231ffffc61883d4fac2b62fbea8d"},
+    {file = "uvicorn-0.17.6-py3-none-any.whl", hash = "sha256:19e2a0e96c9ac5581c01eb1a79a7d2f72bb479691acd2b8921fce48ed5b961a6"},
+    {file = "uvicorn-0.17.6.tar.gz", hash = "sha256:5180f9d059611747d841a4a4c4ab675edf54c8489e97f96d0583ee90ac3bfc23"},
 ]
 wcwidth = [
     {file = "wcwidth-0.2.5-py2.py3-none-any.whl", hash = "sha256:beb4802a9cebb9144e99086eff703a642a13d6a0052920003a230f3294bbe784"},
@@ -879,6 +913,6 @@ wsproto = [
     {file = "wsproto-1.0.0.tar.gz", hash = "sha256:868776f8456997ad0d9720f7322b746bbe9193751b5b290b7f924659377c8c38"},
 ]
 zeroconf = [
-    {file = "zeroconf-0.37.0-py3-none-any.whl", hash = "sha256:1de8e4274ff0af35bab098ec596f9448b26db9c4d90dc61a861f1cf4f435bc75"},
-    {file = "zeroconf-0.37.0.tar.gz", hash = "sha256:f901eda390160bc270aeba95ef2d6aa0a736503301dac393e7d5fd95fa17043a"},
+    {file = "zeroconf-0.38.4-py3-none-any.whl", hash = "sha256:f5dd86d12d06d1eec9fad05778d3c5787c2bcc03df4de4728b938df6bff70129"},
+    {file = "zeroconf-0.38.4.tar.gz", hash = "sha256:080c540ea4b8b9defa9f3ac05823c1725ea2c8aacda917bfc0193f6758b95aeb"},
 ]

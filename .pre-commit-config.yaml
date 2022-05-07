@@ -1,6 +1,6 @@
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v2.3.0
+  rev: v4.2.0
   hooks:
     - id: end-of-file-fixer
     - id: trailing-whitespace
@@ -8,7 +8,7 @@ repos:
       exclude: "^backend/kubernetes/charts/[^/]*/templates"
     - id: check-json
 - repo: https://github.com/pocc/pre-commit-hooks
-  rev: python
+  rev: v1.3.5
   hooks:
     - id: clang-format
       args: [--style=Google, -i]

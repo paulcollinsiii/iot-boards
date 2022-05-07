@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package blinky;
+
+enum blinky_led_t {
+    LED_0 = 0;
+    RGB_0 = 8;
+}
+
+enum blinky_pattern_t {
+    BLINK = 0;
+    BREATH = 1;
+    FADE_IN = 2;
+    FADE_OUT = 3;
+    RAINBOW = 4;
+}
+
+message SetLEDRequest {
+    // Delay between animation steps
+    uint32 ms_delay = 2;
+    uint32 repeat_count = 3;
+    blinky_led_t target = 5;
+    blinky_pattern_t pattern = 6;
+    // Brightness, RGB values. Brightness is only 5bit!
+    uint32 brgb = 7;
+    bool off_at_end = 8;
+}
+
+message SetLEDResponse { }

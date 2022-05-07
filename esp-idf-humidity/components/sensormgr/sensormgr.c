@@ -299,6 +299,7 @@ static esp_err_t sensormgr_get_first_datafile(FILE **fp, char *f_name,
 // At highwater and disconnected, buffer to file
 
 static void sensormgr_task_file_writer(void *pvParam) {
+  uint32_t bytes_free, bytes_written;
   time_t timestamp;
   struct tm timestamp_tm;
   char f_name[24];
@@ -313,6 +314,7 @@ static void sensormgr_task_file_writer(void *pvParam) {
 
   // High watermark means drain ring buffer to the file till either empty or low
   // watermark
+
   ESP_LOGI(TAG, "File writing task starting...");
   sensormgr_log_free_space();
   for (;;) {
@@ -359,6 +361,8 @@ static void sensormgr_task_file_writer(void *pvParam) {
       ESP_LOGE(TAG, "Failed to output file");
       abort();
     }
+    bytes_free = (sensormgr_free_space() - SENSORMGR_FS_HIGHWATER) * 1024;
+    bytes_written = 0;
     for (;;) {
       // Read JUST the ring buffers
       sensormgr_read_iter(&iter_state, false);
@@ -367,18 +371,16 @@ static void sensormgr_task_file_writer(void *pvParam) {
       }
       // Dump the entry straight to the file
       fwrite(iter_state.reading, iter_state.reading_size, 1, f_out);
+      bytes_written += iter_state.reading_size;
+      // Allowed to go slightly over "free" due to reserved space
+      if (bytes_written > bytes_free) {
+        break;
+      }
     }
     fclose(f_out);
     state.has_files = true;
     ESP_LOGI(TAG, "closing: %s", f_name);
     f_out = NULL;
-    if (sensormgr_free_space() <
-        SENSORMGR_FS_HIGHWATER) {  // File space is full, stop polling
-      ESP_LOGI(TAG, "File writing task pausing sensor polling, disk full...");
-      // Clear polling, but make sure the system wants to drain the queue
-      xEventGroupClearBits(mqttmgr_events, SENSORMGR_POLLSENSORS_BIT);
-      xEventGroupSetBits(mqttmgr_events, SENSORMGR_LOWWATER_BIT);
-    }
     xEventGroupSetBits(mqttmgr_events, SENSORMGR_DONEWRITING_BIT);
   }
 }
@@ -395,7 +397,6 @@ static void sensormgr_task_queuesend(void *pvParam) {
   };
   cJSON *root, *sensor_array, *sensor_data, *metadata;
   char *json_text;
-  mqttmgr_msg_t msg;
   esp_err_t ret;
 
   ESP_LOGI(TAG, "Staring %s task", SENSORMGR_TASKNAME_QUEUE);
@@ -431,17 +432,14 @@ static void sensormgr_task_queuesend(void *pvParam) {
           vTaskDelay(5000 / portTICK_PERIOD_MS);
         }
       } while (json_text == NULL);
-      msg = (mqttmgr_msg_t){
-          .msg = json_text,
-          .len = strlen(json_text),
-          .topic = MQTTMGR_TOPIC_SENSOR,
-      };
-      // Retry sending to the mqtt queue forever
-      do {
-        ret = mqttmgr_queuemsg(&msg, portMAX_DELAY);
-      } while (ret != ESP_OK);
+      ret = mqttmgr_queuemsg(MQTTMGR_TOPIC_SENSOR, strlen(json_text), json_text,
+                             portMAX_DELAY);
+      if (ret = ESP_ERR_INVALID_ARG) {
+        abort();  // We configured messages badly if this happens
+      }
     }
     cJSON_Delete(root);  // Cleanup after all that JSON
+    free(json_text);
     root = sensor_array = sensor_data = metadata = NULL;
     json_text = NULL;
   }
@@ -576,10 +574,11 @@ esp_err_t sensormgr_start() {
     abort();
   }
 
+  // Reading sensor data is slightly higher priority than other tasks
   if (state.measure_task_handle == NULL &&
       pdPASS != xTaskCreate(sensormgr_task_sensorread, SENSORMGR_TASKNAME_READ,
-                            SENSORMGR_TASK_STACKSIZE, (void *)1,
-                            tskIDLE_PRIORITY, &state.measure_task_handle)) {
+                            SENSORMGR_TASK_STACKSIZE, (void *)1, 1,
+                            &state.measure_task_handle)) {
     ESP_LOGE(TAG, "Failed creating task sensorread!");
     return ESP_FAIL;
   } else if (state.measure_task_handle != NULL &&
@@ -598,11 +597,13 @@ esp_err_t sensormgr_start() {
     vTaskResume(state.queue_task_handle);
   }
 
+  // Sensor writing tasks are also slightly higher priority as dumping data out
+  // will prevent running out of memory.
   if (state.filewriter_task_handle == NULL &&
       pdPASS != xTaskCreate(sensormgr_task_file_writer,
                             SENSORMGR_TASKNAME_FILEWRITER,
-                            SENSORMGR_TASK_STACKSIZE, (void *)1,
-                            tskIDLE_PRIORITY, &state.filewriter_task_handle)) {
+                            SENSORMGR_TASK_STACKSIZE, (void *)1, 1,
+                            &state.filewriter_task_handle)) {
     ESP_LOGE(TAG, "Failed creating task filewriter!");
     return ESP_FAIL;
   } else if (state.filewriter_task_handle != NULL &&
@@ -616,8 +617,17 @@ esp_err_t sensormgr_start() {
 }
 
 esp_err_t sensormgr_stop() {
+  xEventGroupClearBits(mqttmgr_events, SENSORMGR_POLLSENSORS_BIT);
+
   vTaskSuspend(state.measure_task_handle);
   vTaskSuspend(state.queue_task_handle);
+
+  xEventGroupSetBits(mqttmgr_events, SENSORMGR_HIGHWATER_BIT);
+  ESP_LOGW(TAG, "Waiting for file writer task to finish up");
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  xEventGroupWaitBits(mqttmgr_events, SENSORMGR_DONEWRITING_BIT, pdFALSE,
+                      pdTRUE, portMAX_DELAY);
+
   vTaskSuspend(state.filewriter_task_handle);
   return ESP_OK;
 }

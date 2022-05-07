@@ -3,7 +3,7 @@ menu "sensormgr"
 config SENSORMGR_RINGBUF_SIZE
   int "Ringbuffer size (in K) for measurements"
   default 32
-  range 8 64
+  range 8 4096
 
 config SENSORMGR_SAMPLE_RATE
   int "Delay (ms) between polling of all sensors"

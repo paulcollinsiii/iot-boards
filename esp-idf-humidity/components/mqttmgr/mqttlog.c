@@ -5,14 +5,12 @@
 #include <stdatomic.h>
 #include <string.h>
 
-#define MQTTLOG_RINBUFFER_SIZE 512
-#define MQTTLOG_BUFMAX 1024
+#define MQTTLOG_RINBUFFER_SIZE CONFIG_SENSORMGR_RINGBUF_SIZE * 1024
 #define MQTTLOG_TASK_LOGSEND_NAME "mqttlog-logsend"
-#define MQTTLOG_TASK_LOGSEND_STACKSIZE 2 * 1024
+#define MQTTLOG_TASK_LOGSEND_STACKSIZE 2560
 
 typedef struct state_t {
   bool initialized;
-  atomic_uint_fast32_t buf_msg_size;
   atomic_uint_fast16_t msgs_discarded;
   RingbufHandle_t ring_buffer;
   TaskHandle_t task_logsend;
@@ -43,10 +41,6 @@ static esp_err_t mqttlog_drop_msg() {
   mqttmgr_msg_t *buffered_msg;
   size_t msg_size;
 
-  if (state.buf_msg_size == 0) {
-    return ESP_ERR_NO_MEM;
-  }
-
   buffered_msg =
       (mqttmgr_msg_t *)xRingbufferReceive(state.ring_buffer, &msg_size, 0);
   if (buffered_msg == NULL) {
@@ -54,22 +48,18 @@ static esp_err_t mqttlog_drop_msg() {
     return ESP_FAIL;
   }
   ESP_LOGW(TAG, "Dropping msg: %s", (char *)buffered_msg->msg);
-  free(buffered_msg->msg);
-  state.buf_msg_size -= buffered_msg->len;
   vRingbufferReturnItem(state.ring_buffer, buffered_msg);
 
   state.msgs_discarded++;
   return ESP_OK;
 }
 
-static esp_err_t mqttlog_queue_msg(mqttmgr_msg_t *msg) {
-  // Is the message longer than what should be queued?
-  while (state.buf_msg_size + msg->len > MQTTLOG_BUFMAX) {
-    mqttlog_drop_msg();
-  }
-  // Queue
-  while (pdTRUE !=
-         xRingbufferSend(state.ring_buffer, msg, sizeof(mqttmgr_msg_t), 0)) {
+static esp_err_t mqttlog_queue_msg(char *msg) {
+  mqttmgr_msg_t *rb_msg;
+  size_t msg_len = strlen(msg);
+
+  while (pdTRUE != xRingbufferSendAcquire(state.ring_buffer, (void **)&rb_msg,
+                                          sizeof(mqttmgr_msg_t) + msg_len, 0)) {
     ESP_LOGW(TAG, "Log buffer full... dropping oldest and retrying");
     switch (mqttlog_drop_msg()) {
       case ESP_OK:
@@ -81,8 +71,12 @@ static esp_err_t mqttlog_queue_msg(mqttmgr_msg_t *msg) {
         abort();
     }
   }
-
-  state.buf_msg_size += msg->len;
+  *rb_msg = (mqttmgr_msg_t){
+      .len = msg_len,
+      .topic = MQTTMGR_TOPIC_LOG,
+  };
+  memcpy(rb_msg->msg, msg, msg_len);
+  xRingbufferSendComplete(state.ring_buffer, rb_msg);
   xTaskNotifyGive(state.task_logsend);
 
   return ESP_OK;
@@ -93,11 +87,11 @@ static void mqttlog_task_logsend(void *pvParm) {
   size_t msg_size;
 
   ESP_LOGI(TAG, "Starting %s", MQTTLOG_TASK_LOGSEND_NAME);
-  while (1) {
+  while (true) {
     // Wait for the queue_msg function to notify
     xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
 
-    while (state.buf_msg_size > 0) {
+    while (true) {
       // If we're not connected to MQTT, then we can't really send messages
       xEventGroupWaitBits(mqttmgr_events, MQTTMGR_CLIENT_CONNECTED_BIT, pdFALSE,
                           pdTRUE, portMAX_DELAY);
@@ -110,17 +104,15 @@ static void mqttlog_task_logsend(void *pvParm) {
       buffered_msg =
           (mqttmgr_msg_t *)xRingbufferReceive(state.ring_buffer, &msg_size, 0);
       if (buffered_msg == NULL) {
-        ESP_LOGE(TAG, "Expected msg but failed to receive!");
-        abort();
+        // No message means we've drained the queue, wait for notify
+        break;
       }
-      if (ESP_OK != mqttmgr_queuemsg(buffered_msg, portMAX_DELAY)) {
+      if (ESP_OK != mqttmgr_queuemsg(buffered_msg->topic, buffered_msg->len,
+                                     buffered_msg->msg, portMAX_DELAY)) {
         ESP_LOGE(TAG, "Dropping message on the floor: %s",
                  (char *)buffered_msg->msg);
-        free(buffered_msg->msg);
         state.msgs_discarded++;
       }
-
-      state.buf_msg_size -= buffered_msg->len;
       vRingbufferReturnItem(state.ring_buffer, buffered_msg);
     }
   }
@@ -128,9 +120,9 @@ static void mqttlog_task_logsend(void *pvParm) {
 
 esp_err_t mqttlog_log_render(const char *tag, esp_log_level_t level,
                              const char *event, const char *tag_format, ...) {
+  esp_err_t ret;
   va_list args;
   cJSON *json, *tags;
-  mqttmgr_msg_t msg;
   time_t now;
   char *token = NULL, *sub_token = NULL, *tag_name = NULL;
   char *token_state = NULL, *sub_token_state = NULL, local_tag_format[256];
@@ -196,14 +188,11 @@ esp_err_t mqttlog_log_render(const char *tag, esp_log_level_t level,
   va_end(args);
   json_rendered = cJSON_PrintUnformatted(json);
   ESP_LOG_LEVEL_LOCAL(level, tag, "%s", json_rendered);
-  msg = (mqttmgr_msg_t){
-      .len = strlen(json_rendered),
-      .msg = json_rendered,
-      .topic = MQTTMGR_TOPIC_LOG,
-  };
   cJSON_Delete(json);
 
-  return mqttlog_queue_msg(&msg);
+  ret = mqttlog_queue_msg(json_rendered);
+  free(json_rendered);
+  return ret;
 }
 
 esp_err_t mqttlog_init() {
@@ -213,7 +202,6 @@ esp_err_t mqttlog_init() {
   }
 
   state = (state_t){
-      .buf_msg_size = 0,
       .initialized = true,
       .msgs_discarded = 0,
       .ring_buffer =
