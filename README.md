@@ -38,7 +38,17 @@ Look in the `Components` section and read through the options, but in particular
 
 ## Handy Commands
 
-Build with
+### Build with
 `pio run -t upload && pio device monitor --raw`
 
 Or you can do it through vscode
+
+### Grab the crash dump off the flash of the device
+
+`espcoredump.py -p /dev/ttyACM0 info_corefile ~/coding/iot-boards/esp-idf-humidity/.pio/build/featheresp32-s2/firmware.elf -d 1`
+PlatformIO doesn't directly support doing this so you have to go into the
+framework folder directly, set IDF_PATH and then go into components to find
+this file
+
+Additionally there were I couple silly mods to the python modules that had to
+be made since the S2 I have needs to be set to not reset afterwards.
