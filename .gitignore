@@ -3,6 +3,7 @@
 secrets.h
 backend/kubernetes/ca.crt
 backend/kubernetes/rndc-key
+backend/kubernetes/ota-updates/
 
 # Gitignore file from github/gitignore files.
 # * C++

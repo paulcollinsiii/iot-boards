@@ -25,10 +25,10 @@ appVersion: "1.0.0"
 
 dependencies:
   - name: traefik
-    version: 10.9.1
+    version: 10.19.5
     repository: https://helm.traefik.io/traefik
   - name: home-assistant
-    version: 12.0.1
+    version: 13.1.2
     repository: https://k8s-at-home.com/charts/
   - name: mosquitto
     version: 4.2.0
@@ -42,6 +42,9 @@ dependencies:
   - name: grafana
     repository: https://grafana.github.io/helm-charts
     version: 6.20.7
+  - name: nginx
+    repository: https://charts.bitnami.com/bitnami
+    version: 10.2.x
   - name: common
     repository: https://charts.bitnami.com/bitnami
     tags:

@@ -4,3 +4,13 @@ metadata:
   name: kaffi-homelab-issuer
 spec:
   selfSigned: {}
+
+---
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: kaffi-homelab-ca
+spec:
+  ca:
+    secretName: kaffi-homelab-ca
