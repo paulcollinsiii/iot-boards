@@ -19,6 +19,7 @@
 #include "ltr390mgr.h"
 #include "mqttlog.h"
 #include "mqttmgr.h"
+#include "otamgr.h"
 #include "sensormgr.h"
 #include "sht4xmgr.h"
 #include "shtc3mgr.h"
@@ -115,6 +116,7 @@ void client_init() {
   // Initialize component libraries (non-hardware)
   ESP_ERROR_CHECK(mqttmgr_init(PRIVATE_ID));
   ESP_ERROR_CHECK(mqttlog_init());
+  ESP_ERROR_CHECK(otamgr_init());
 }
 
 void sensor_init() {

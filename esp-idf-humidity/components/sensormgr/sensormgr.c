@@ -18,7 +18,7 @@
 #define SENSORMGR_TASKNAME_READ "sensormgr"
 #define SENSORMGR_TASKNAME_QUEUE "sensormgr-q"
 #define SENSORMGR_TASKNAME_FILEWRITER "sensormgr-fw"
-#define SENSORMGR_TASK_STACKSIZE 4 * 1024
+#define SENSORMGR_TASK_STACKSIZE 3 * 1024
 #define SENSORMGR_RINBUFFER_SIZE CONFIG_SENSORMGR_RINGBUF_SIZE * 1024
 // Ringbuffer free space is by max item size that can be sent in
 #define SENSORMGR_RINBUFFER_LOWWATER (SENSORMGR_RINBUFFER_SIZE / 2) - 32
@@ -107,19 +107,19 @@ static void sensormgr_log_stats() {
       local.ringbuffer_high_water, uptime);
 }
 
-static void sensormgrmgr_cmd_get_stats_dealloc_cb(CommandResponse *resp_out) {
+static void sensormgr_cmd_get_stats_dealloc_cb(CommandResponse *resp_out) {
   ESP_LOGD(TAG, "sensormgrmgmt_cmd_set_options_dealloc_cb - freeing");
   free(resp_out->sensormgr_get_stats_response);
 }
 
-static CommandResponse__RetCodeT sensormgrmgr_cmd_get_stats(
+static CommandResponse__RetCodeT sensormgr_cmd_get_stats(
     CommandRequest *msg, CommandResponse *resp_out, dealloc_cb_fn **cb) {
   if (msg->cmd_case != COMMAND_REQUEST__CMD_SENSORMGR_GET_STATS_REQUEST) {
     return COMMAND_RESPONSE__RET_CODE_T__NOTMINE;
   }
 
   resp_out->resp_case = COMMAND_RESPONSE__RESP_SENSORMGR_GET_STATS_RESPONSE;
-  *cb = sensormgrmgr_cmd_get_stats_dealloc_cb;
+  *cb = sensormgr_cmd_get_stats_dealloc_cb;
   Sensormgr__GetStatsResponse *cmd_resp = (Sensormgr__GetStatsResponse *)calloc(
       1, sizeof(Sensormgr__GetStatsResponse));
   sensormgr__get_stats_response__init(cmd_resp);
@@ -434,7 +434,7 @@ static void sensormgr_task_queuesend(void *pvParam) {
       } while (json_text == NULL);
       ret = mqttmgr_queuemsg(MQTTMGR_TOPIC_SENSOR, strlen(json_text), json_text,
                              portMAX_DELAY);
-      if (ret = ESP_ERR_INVALID_ARG) {
+      if (ret == ESP_ERR_INVALID_ARG) {
         abort();  // We configured messages badly if this happens
       }
     }
@@ -563,7 +563,7 @@ esp_err_t sensormgr_init() {
     ESP_LOGI(TAG, "Previously saved sensordata detected!");
   }
 
-  mqttmgr_register_cmd_handler(sensormgrmgr_cmd_get_stats);
+  mqttmgr_register_cmd_handler(sensormgr_cmd_get_stats);
 
   return ESP_OK;
 }

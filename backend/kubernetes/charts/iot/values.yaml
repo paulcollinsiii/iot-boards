@@ -11,7 +11,7 @@ grafana:
     enabled: true
     annotations:
       kubernetes.io/ingress.class: "traefik"
-      cert-manager.io/cluster-issuer: "kaffi-homelab-issuer"
+      cert-manager.io/cluster-issuer: "kaffi-homelab-ca"
       traefik.ingress.kubernetes.io/router.middlewares: "iot-{{ .Release.Namespace }}-https-middleware@kubernetescrd"
     hosts:
       - grafana.iot.kaffi.home
@@ -61,7 +61,7 @@ home-assistant:
         enabled: true
         annotations:
           kubernetes.io/ingress.class: "traefik"
-          cert-manager.io/cluster-issuer: "kaffi-homelab-issuer"
+          cert-manager.io/cluster-issuer: "kaffi-homelab-ca"
           # This name is garbage and HAS to be hardcoded because helm doens't do any rendering in the values.yaml
           # which breaks my ability to script out of this. The name is based "common.names.fullname"-https-middleware
           # BUT because of namespaces, if this is in a namespace, then traefik ADDS that to it's name.
@@ -91,7 +91,7 @@ home-assistant:
       enabled: true
       annotations:
         kubernetes.io/ingress.class: "traefik"
-        cert-manager.io/cluster-issuer: "kaffi-homelab-issuer"
+        cert-manager.io/cluster-issuer: "kaffi-homelab-ca"
         # This name is garbage and HAS to be hardcoded because helm doens't do any rendering in the values.yaml
         # which breaks my ability to script out of this. The name is based "common.names.fullname"-https-middleware
         # BUT because of namespaces, if this is in a namespace, then traefik ADDS that to it's name.
@@ -212,6 +212,49 @@ mosquitto:
         mqtt:
           enabled: true
           port: 1883
+
+nginx:
+  extraVolumes:
+    - name: ota
+      hostPath:
+        path: /vagrant/ota-updates
+        type: DirectoryOrCreate
+  extraVolumeMounts:
+    - mountPath: /mnt/ota-updates
+      name: ota
+  ingress:
+    annotations:
+      cert-manager.io/cluster-issuer: "kaffi-homelab-ca"
+      kubernetes.io/ingress.class: "traefik"
+      traefik.ingress.kubernetes.io/router.middlewares: "iot-{{ .Release.Namespace }}-https-middleware@kubernetescrd"
+    hostname: ota.iot.kaffi.home
+    enabled: true
+    extraTls:
+      - hosts:
+          - "ota.iot.kaffi.home"
+        secretName: "ota.iot.kaffi.home-cert"
+    path: "/"
+    pathType: Prefix
+  service:
+    type: ClusterIP
+  serverBlock: |
+    server {
+      listen        8080;
+      server_name   ota.iot.kaffi.home
+      error_log     /home/www-data/logs/nginx_www.error.log;
+      error_page    404    /404.html;
+
+      location /firmware/ {
+        autoindex on;
+        rewrite ^/firmware/(.*) /$1 break;
+        root  /mnt/ota-updates;
+      }
+
+      location = /404.html {
+        root /home/www-data/mysite/static/html;
+      }
+    }
+
 
 telegraf:
   envFromSecret: "telegraf-tokens"

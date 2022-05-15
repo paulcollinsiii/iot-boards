@@ -1,0 +1,11 @@
+menu "OTA Support"
+
+config OTAMGR_ENABLED
+  bool "Enable OTA Manager"
+  default n
+
+config OTAMGR_FIRMWARE_URL_BASE
+  string "Base URL for firmware"
+  default "https://ota.iot.kaffi.home:443/firmware/"
+
+endmenu
