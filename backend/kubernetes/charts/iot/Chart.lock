@@ -13,15 +13,15 @@ dependencies:
   version: 3.0.2
 - name: telegraf
   repository: https://helm.influxdata.com/
-  version: 1.8.10
+  version: 1.8.18
 - name: grafana
   repository: https://grafana.github.io/helm-charts
   version: 6.20.7
 - name: nginx
   repository: https://charts.bitnami.com/bitnami
-  version: 10.2.1
+  version: 11.1.0
 - name: common
   repository: https://charts.bitnami.com/bitnami
-  version: 1.13.1
-digest: sha256:18b55ce78613a23c6ecf4654ddd21d4a438cc4eed300b9035413661498d8f838
-generated: "2022-05-07T21:55:49.502088598-04:00"
+  version: 1.14.0
+digest: sha256:d8033640a44f6e0cbdd6566fa134cd141ecaedea85543543ef76ff0379a51bda
+generated: "2022-05-18T00:21:04.305159661-04:00"
