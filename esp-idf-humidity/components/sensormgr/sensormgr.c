@@ -9,12 +9,14 @@
 #include <freertos/task.h>
 #include <mqttlog.h>
 #include <mqttmgr.h>
+#include <nvs_flash.h>
 #include <stdatomic.h>
 #include <string.h>
 
 // TODO: Convert this to an actual kconfig value
 #define CONFIG_SENSOR_COUNT 4
 
+#define SENSORMGR_NVS_LOCATION_KEY "location"
 #define SENSORMGR_TASKNAME_READ "sensormgr"
 #define SENSORMGR_TASKNAME_QUEUE "sensormgr-q"
 #define SENSORMGR_TASKNAME_FILEWRITER "sensormgr-fw"
@@ -39,6 +41,7 @@ typedef struct _state_t {
   wl_handle_t wl_handle;
   atomic_uint_fast32_t ring_buffer_item_count;
   atomic_bool has_files;  // Are there files that need to be drained?
+  char location_name[32];
 } state_t;
 
 typedef struct _sensor_reading_t {
@@ -100,11 +103,12 @@ static void sensormgr_log_stats() {
            local.uptime_microsec / s / q / q % s,
            local.uptime_microsec / q / q % s, local.uptime_microsec / q % q);
 
-  MQTTLOG_LOGI(
-      TAG, "current stats",
-      "disk_free_kb=%u disk_total_size=%u low_water=%b high_water=%b uptime=%s",
-      local.disk_free_kb, local.disk_total_kb, local.ringbuffer_low_water,
-      local.ringbuffer_high_water, uptime);
+  MQTTLOG_LOGI(TAG, "current stats",
+               "disk_free_kb=%u disk_total_size=%u low_water=%b high_water=%b "
+               "uptime=%s location=%s",
+               local.disk_free_kb, local.disk_total_kb,
+               local.ringbuffer_low_water, local.ringbuffer_high_water, uptime,
+               state.location_name);
 }
 
 static void sensormgr_cmd_get_stats_dealloc_cb(CommandResponse *resp_out) {
@@ -410,10 +414,8 @@ static void sensormgr_task_queuesend(void *pvParam) {
                         portMAX_DELAY);
     ESP_LOGD(TAG, "marshalling loop...");
     root = cJSON_CreateObject();
-    cJSON_AddItemToObject(
-        root, "metadata",
-        metadata = cJSON_CreateObject());  // TODO: how to get device-id and
-                                           // friendly name here?
+    cJSON_AddItemToObject(root, "metadata", metadata = cJSON_CreateObject());
+    cJSON_AddStringToObject(metadata, "location", state.location_name);
     cJSON_AddItemToObject(root, "data", sensor_array = cJSON_CreateArray());
     for (idx = 0; idx < 10; idx++) {
       sensormgr_read_iter(&iter_state, true);
@@ -521,6 +523,94 @@ static void sensormgr_task_sensorread(void *pvParam) {
   }
 }
 
+static esp_err_t sensormgr_nvs_set_location(char *location) {
+  esp_err_t ret;
+  nvs_handle_t my_handle;
+  ESP_ERROR_CHECK(nvs_open("sensormgr", NVS_READWRITE, &my_handle));
+  ret = nvs_set_str(my_handle, SENSORMGR_NVS_LOCATION_KEY, location);
+  if (ESP_OK != ret) {
+    ESP_LOGE(TAG, "Errors (%s) saving location to NVS", esp_err_to_name(ret));
+  }
+  nvs_close(my_handle);
+  strncpy(state.location_name, location, strlen(location));
+  return ret;
+}
+
+static void sensormgr_nvs_get_location() {
+  esp_err_t ret;
+  nvs_handle_t my_handle;
+  size_t location_name_size = sizeof(state.location_name);
+  ESP_ERROR_CHECK(nvs_open("sensormgr", NVS_READWRITE, &my_handle));
+  ret = nvs_get_str(my_handle, SENSORMGR_NVS_LOCATION_KEY, state.location_name,
+                    &location_name_size);
+  switch (ret) {
+    case ESP_OK:
+      ESP_LOGI(TAG, "Location read from NVS: %s", SENSORMGR_NVS_LOCATION_KEY);
+      break;
+    case ESP_ERR_NVS_NOT_FOUND:
+      ESP_LOGI(TAG, "SENSORMGR_NVS_LOCATION_KEY ID not set, creating...");
+      ESP_ERROR_CHECK(nvs_set_str(my_handle, SENSORMGR_NVS_LOCATION_KEY,
+                                  state.location_name));
+      break;
+    default:
+      ESP_LOGE(TAG, "Errors (%s) opening NVS handle", esp_err_to_name(ret));
+      break;
+  }
+  nvs_close(my_handle);
+}
+
+static void sensormgr_cmd_get_options_dealloc_cb(CommandResponse *resp_out) {
+  ESP_LOGD(TAG, "sensormgr_cmd_get_options_dealloc_cb - freeing");
+  free(resp_out->sensormgr_get_options_response);
+}
+
+static CommandResponse__RetCodeT sensormgr_cmd_get_options(
+    CommandRequest *msg, CommandResponse *resp_out, dealloc_cb_fn **cb) {
+  if (msg->cmd_case != COMMAND_REQUEST__CMD_SENSORMGR_GET_OPTIONS_REQUEST) {
+    return COMMAND_RESPONSE__RET_CODE_T__NOTMINE;
+  }
+
+  resp_out->resp_case = COMMAND_RESPONSE__RESP_SENSORMGR_GET_OPTIONS_RESPONSE;
+  *cb = sensormgr_cmd_get_options_dealloc_cb;
+  Sensormgr__GetOptionsResponse *cmd_resp =
+      (Sensormgr__GetOptionsResponse *)calloc(
+          1, sizeof(Sensormgr__GetOptionsResponse));
+  sensormgr__get_options_response__init(cmd_resp);
+  resp_out->sensormgr_get_options_response = cmd_resp;
+
+  return COMMAND_RESPONSE__RET_CODE_T__HANDLED;
+}
+
+static void sensormgr_cmd_set_options_dealloc_cb(CommandResponse *resp_out) {
+  ESP_LOGD(TAG, "sensormgr_cmd_set_options_dealloc_cb - freeing");
+  free(resp_out->sensormgr_get_stats_response);
+}
+
+static CommandResponse__RetCodeT sensormgr_cmd_set_options(
+    CommandRequest *msg, CommandResponse *resp_out, dealloc_cb_fn **cb) {
+  if (msg->cmd_case != COMMAND_REQUEST__CMD_SENSORMGR_SET_OPTIONS_REQUEST) {
+    return COMMAND_RESPONSE__RET_CODE_T__NOTMINE;
+  }
+  Sensormgr__SetOptionsRequest *cmd = msg->sensormgr_set_options_request;
+
+  resp_out->resp_case = COMMAND_RESPONSE__RESP_SENSORMGR_SET_OPTIONS_RESPONSE;
+  *cb = sensormgr_cmd_set_options_dealloc_cb;
+  Sensormgr__SetOptionsResponse *cmd_resp =
+      (Sensormgr__SetOptionsResponse *)calloc(
+          1, sizeof(Sensormgr__SetOptionsResponse));
+  sensormgr__set_options_response__init(cmd_resp);
+  resp_out->sensormgr_set_options_response = cmd_resp;
+  size_t location_name_len = strlen(cmd->location_name);
+  if (location_name_len > sizeof(state.location_name)) {
+    MQTTLOG_LOGW(TAG, "cmd_set_options failed",
+                 "reason=max_len_exceeded max_len=%u received_len=%u",
+                 sizeof(state.location_name), location_name_len);
+    return COMMAND_RESPONSE__RET_CODE_T__ERR;
+  }
+  sensormgr_nvs_set_location(cmd->location_name);
+  return COMMAND_RESPONSE__RET_CODE_T__HANDLED;
+}
+
 // Check filebuffers, vfat space remaining, set can buffer flags
 esp_err_t sensormgr_init() {
   FILE *f_test;
@@ -528,15 +618,18 @@ esp_err_t sensormgr_init() {
 
   state = (state_t){
       .LOWWATER_ITEM_CNT = SENSORMGR_RINBUFFER_LOWWATER_ITEM_CNT,
+      .filewriter_task_handle = NULL,
+      .location_name = "unknown",
+      .measure_task_handle = NULL,
+      .queue_task_handle = NULL,
       .ring_buffer =
           xRingbufferCreate(SENSORMGR_RINBUFFER_SIZE, RINGBUF_TYPE_NOSPLIT),
       .ring_buffer_item_count = 0,
       .wl_handle = 0,
-      .measure_task_handle = NULL,
-      .queue_task_handle = NULL,
-      .filewriter_task_handle = NULL,
       .initilized = true,
   };
+
+  sensormgr_nvs_get_location();
 
   // While this starts the polling process, if there are files pending
   // it'll take till LOW-WATER for those to get drained
@@ -564,6 +657,8 @@ esp_err_t sensormgr_init() {
   }
 
   mqttmgr_register_cmd_handler(sensormgr_cmd_get_stats);
+  mqttmgr_register_cmd_handler(sensormgr_cmd_get_options);
+  mqttmgr_register_cmd_handler(sensormgr_cmd_set_options);
 
   return ESP_OK;
 }

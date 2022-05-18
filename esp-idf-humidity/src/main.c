@@ -116,7 +116,9 @@ void client_init() {
   // Initialize component libraries (non-hardware)
   ESP_ERROR_CHECK(mqttmgr_init(PRIVATE_ID));
   ESP_ERROR_CHECK(mqttlog_init());
+#if CONFIG_OTAMGR_ENABLED
   ESP_ERROR_CHECK(otamgr_init());
+#endif
 }
 
 void sensor_init() {

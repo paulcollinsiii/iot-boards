@@ -12,3 +12,17 @@ message GetStatsResponse {
     bool ringbuffer_high_water = 6;
     bool disk_high_water = 7;
 }
+
+message GetOptionsRequest{}
+message GetOptionsResponse{
+    string location_name = 2;
+}
+
+message SetOptionsRequest{
+    // Friendly location name to set in the sensor metadata
+    string location_name = 2;
+}
+
+// This is empty because things are either set or it throws an error with a log
+// out to MQTTLOG
+message SetOptionsResponse{}
