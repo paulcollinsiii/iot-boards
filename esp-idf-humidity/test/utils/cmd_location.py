@@ -10,9 +10,10 @@ from modules import ltr390_pb2, sht4x_pb2, blinky_pb2
 from asyncio_mqtt import Client, ProtocolVersion
 
 
-device_uuid = ["05474d0c-8e72-45de-8d32-a7dec3ec79bf", "0ea9ac26-d952-4094-bc0b-17622a788b0c"]
-cmd_req_topic = [f"command/{did}/req/" for did in device_uuid]
-cmd_resp_topic = [f"command/{did}/resp/" for did in device_uuid]
+# device_uuid = "05474d0c-8e72-45de-8d32-a7dec3ec79bf"
+device_uuid = "0ea9ac26-d952-4094-bc0b-17622a788b0c"
+cmd_req_topic = f"command/{device_uuid}/req/"
+cmd_resp_topic = f"command/{device_uuid}/resp/"
 
 async def comm_stack():
 
@@ -23,13 +24,12 @@ async def comm_stack():
         client = Client('mqtt.iot.kaffi.home', protocol=ProtocolVersion.V311)
         await stack.enter_async_context(client)
 
-        for resp_topic in cmd_resp_topic:
-            manager = client.filtered_messages(resp_topic)
-            messages = await stack.enter_async_context(manager)
-            task = asyncio.create_task(log_cmd_result(messages))
-            tasks.add(task)
+        manager = client.filtered_messages(cmd_resp_topic)
+        messages = await stack.enter_async_context(manager)
+        task = asyncio.create_task(log_cmd_result(messages))
+        tasks.add(task)
 
-            await client.subscribe(resp_topic)
+        await client.subscribe(cmd_resp_topic)
 
         task = asyncio.create_task(post_cmds(client))
         tasks.add(task)
@@ -57,13 +57,11 @@ async def post_cmds(client):
     # Create a test alarm
     cmd = commands_pb2.CommandRequest()
     cmd.uuid = str(uuid.uuid4())
-    cmd.sensormgr_get_stats_request.SetInParent()
+    cmd.sensormgr_set_options_request.SetInParent()
+    cmd.sensormgr_set_options_request.location_name = "bedroom"
 
-    logging.info('cmd blinky_set_led_request: %s', cmd.SerializeToString())
-    await asyncio.gather(
-        *[asyncio.create_task(client.publish(tpc, payload=cmd.SerializeToString(), qos=2, retain=False))
-        for tpc in cmd_req_topic]
-    )
+    logging.info('cmd update_request: %s', cmd.SerializeToString())
+    await client.publish(cmd_req_topic, payload=cmd.SerializeToString(), qos=2, retain=False)
 
 async def cancel_tasks(tasks):
     for task in tasks:

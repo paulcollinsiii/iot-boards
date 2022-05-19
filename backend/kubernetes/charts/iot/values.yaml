@@ -127,7 +127,9 @@ influxdb:
 
   ingress:
     enabled: true
-    tls: false
+    tls: true
+    # docs claim this is deprecated but that doesn't appear to be true
+    certManager: true
     ## @param ingress.pathType Ingress path type
     ##
     pathType: ImplementationSpecific
@@ -154,6 +156,7 @@ influxdb:
     ##
     annotations:
       kubernetes.io/ingress.class: "traefik"
+      cert-manager.io/cluster-issuer: "kaffi-homelab-ca"
       traefik.ingress.kubernetes.io/router.middlewares: "iot-{{ .Release.Namespace }}-https-middleware@kubernetescrd"
     ingressClassName: ""
 
@@ -241,8 +244,11 @@ nginx:
     server {
       listen        8080;
       server_name   ota.iot.kaffi.home
-      error_log     /home/www-data/logs/nginx_www.error.log;
+      error_log     /opt/bitnami/nginx/logs/error.log info;
       error_page    404    /404.html;
+
+      # https://www.nginx.com/resources/wiki/start/topics/tutorials/config_pitfalls/#virtualbox
+      sendfile off;
 
       location /firmware/ {
         autoindex on;
@@ -276,7 +282,7 @@ telegraf:
       flush_interval: "10s"
       flush_jitter: "0s"
       precision: ""
-      debug: false
+      debug: true
       quiet: false
       logfile: ""
       hostname: "$HOSTNAME"
@@ -304,6 +310,8 @@ telegraf:
           tags: "_/sensor_id/_"
       - mqtt_consumer.json_v2:
           measurement_name: "sensordata"
+      - mqtt_consumer.json_v2.tag:
+          path: "metadata.location"
       - mqtt_consumer.json_v2.object:
           path: "data"
           tags:

@@ -1,1 +1,17 @@
 Much has been installed. Good luck
+
+{{- $defaultSecret := dict "data" (dict "admin-user-password" (randAlphaNum 10 | b64enc | quote) "admin-user-token" (randAlphaNum 20 | b64enc )) -}}
+{{- $secret := lookup "v1" "Secret" .Release.Namespace .Values.influxdb.auth.existingSecret | default $defaultSecret -}}
+{{- $influxAdminPw := index $secret.data "admin-user-password" -}}
+{{- $influxAdminToken := index $secret.data "admin-user-token" -}}
+
+deployed secrets:
+{{ $secret | toYaml }}
+
+
+default secret:
+{{ $defaultSecret | toYaml }}
+
+Influx Admin PW: {{ $influxAdminPw }}
+Influx Admin Token: {{ $influxAdminToken }}  <-- or it SHOULD be...
+Grafana Admin PW: {{ $influxAdminPw }}  <-- or it SHOULD be...

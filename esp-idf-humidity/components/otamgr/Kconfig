@@ -5,6 +5,7 @@ config OTAMGR_ENABLED
   default n
 
 config OTAMGR_FIRMWARE_URL_BASE
+  depends on OTAMGR_ENABLED
   string "Base URL for firmware"
   default "https://ota.iot.kaffi.home:443/firmware/"
 

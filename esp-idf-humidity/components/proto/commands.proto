@@ -23,6 +23,8 @@ message CommandRequest {
     sensormgr.GetStatsRequest sensormgr_get_stats_request = 11;
     blinky.SetLEDRequest blinky_set_led_request = 12;
     otamgr.UpdateRequest otamgr_update_request = 13;
+    sensormgr.GetOptionsRequest sensormgr_get_options_request = 14;
+    sensormgr.SetOptionsRequest sensormgr_set_options_request = 15;
   }
 }
 
@@ -47,5 +49,7 @@ message CommandResponse {
     sensormgr.GetStatsResponse sensormgr_get_stats_response = 12;
     blinky.SetLEDResponse blinky_set_led_response = 13;
     otamgr.UpdateResponse otamgr_update_response = 14;
+    sensormgr.GetOptionsResponse sensormgr_get_options_response = 15;
+    sensormgr.SetOptionsResponse sensormgr_set_options_response = 16;
   }
 }
